@@ -28,7 +28,7 @@ export function AdminLayout() {
         {nav.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} className="nav"><Icon name={n.icon} size={18} />{n.label}</NavLink>
         ))}
-        <a href="/" className="nav" onClick={(e) => { e.preventDefault(); go('/'); }}><Icon name="home" size={18} />View website</a>
+        <Link to="/" className="nav"><Icon name="home" size={18} />View website</Link>
         <div className="side-foot">
           <span>Signed in as {user?.name}</span>
           <button type="button" className="link-btn" style={{ color: '#fff', textAlign: 'left' }} onClick={() => { logout(); go('/admin/login'); }}>Sign out</button>

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ArtTone, Course, Currency } from '../lib/types';
 import { useStore } from '../lib/store';
+import { asset } from '../lib/uploads';
 
 /* ---------- Currency preference (per-viewer convenience) ---------- */
 
@@ -105,10 +106,10 @@ export const POSES = {
   twist: { file: 'seated-twist', label: 'a seated twist' },
 } as const;
 export type Pose = keyof typeof POSES;
-export const poseCutout = (p: Pose) => `/images/rekha/${POSES[p].file}-cutout.webp`;
-export const poseScene = (p: Pose) => `/images/rekha/${POSES[p].file}.webp`;
+export const poseCutout = (p: Pose) => asset(`images/rekha/${POSES[p].file}-cutout.webp`)!;
+export const poseScene = (p: Pose) => asset(`images/rekha/${POSES[p].file}.webp`)!;
 /** Course images that are one of the pose scenes have a matching transparent cut-out. */
-export const cutoutFor = (image?: string) => (image?.startsWith('/images/rekha/') ? image.replace(/\.webp$/, '-cutout.webp') : undefined);
+export const cutoutFor = (image?: string) => (image && /^\/?images\/rekha\//.test(image) ? asset(image.replace(/\.webp$/, '-cutout.webp')) : undefined);
 
 /* ---------- Portrait ---------- */
 
@@ -177,7 +178,7 @@ export function CourseArt({ course, label = true }: { course: Pick<Course, 'art'
   if (course.image) {
     return (
       <div className="course-art">
-        <img src={course.image} alt="" loading="lazy" />
+        <img src={asset(course.image)} alt="" loading="lazy" />
       </div>
     );
   }

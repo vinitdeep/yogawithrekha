@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:pages": "tsc --noEmit && vite build --base=/yogawithrekha/ && node scripts/spa-fallback.mjs"
   },
   "dependencies": {
     "gsap": "3.13.0",

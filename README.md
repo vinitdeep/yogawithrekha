@@ -22,6 +22,15 @@ npm run build
 npm run preview    # serve the build locally
 ```
 
+### GitHub Pages preview
+
+Live preview: **https://vinitdeep.github.io/yogawithrekha/**
+
+```bash
+npm run build:pages   # builds with base /yogawithrekha/ and adds 404.html for deep links
+```
+The contents of `dist/` are published to the `gh-pages` branch, which GitHub Pages serves.
+
 `dist/` can be uploaded to any static host. `public/.htaccess` adds the single-page-app fallback that Apache/Hostinger needs.
 The page sets `noindex` while it is a demo. Remove that from `index.html` at launch.
 
