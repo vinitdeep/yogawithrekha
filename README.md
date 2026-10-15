@@ -1,77 +1,97 @@
-# Yoga with Rekha: Rekha Radiance Method (client demo)
+# Yoga with Rekha — website + LMS (Rekha Radiance Method)
 
-This is an interactive demo of the website and learning platform for **Yoga with Rekha**, prepared by V Media Production.
-It covers the public website, enrollment with a simulated checkout, the student learning area and the admin dashboard.
+Website, student learning area and admin panel for **Yoga with Rekha**, by V Media Production.
+Two modes, chosen at build time (`VITE_APP_MODE`, see `.env.example`):
 
-> This is a demo. Sign-in, payments, video uploads and admin access are all **simulated**.
-> Data is stored only in the viewer's browser (localStorage). See [DEMO-NOTES.md](DEMO-NOTES.md) for the full list of what still needs a real integration.
+| | **Demo** (default) | **Production** |
+|---|---|---|
+| Data | This browser only (localStorage) | Supabase Postgres |
+| Sign-in | Simulated, demo accounts | Supabase Auth (hashed passwords, email confirm, reset) |
+| Security | **None** — anyone can edit browser storage | Row-level security + trusted SQL/Edge Functions |
+| Payments | Simulated success/failure | Razorpay (off until configured) |
+| Video upload | Simulated progress, session-only | Private storage + short-lived signed playback |
+| Demo shortcuts | “Demo mode” control: preview as student/admin, reset | Compiled out of the bundle |
+
+Live demo preview: https://vinitdeep.github.io/yogawithrekha/ · Production setup: **[SETUP-PRODUCTION.md](SETUP-PRODUCTION.md)**
 
 ## Run it
 
-Requires Node 18 or newer.
-
 ```bash
 npm install
-npm run dev        # http://localhost:5180
+npm run dev            # demo at http://localhost:5180
+npm test               # 69 unit + database-security tests (no network needed)
+npm run test:e2e       # 100 browser checks against the running dev server (needs Chrome)
+npm run check:prod-bundle   # proves the production build contains no demo code
+npm run build:pages    # GitHub Pages demo build (/yogawithrekha/)
+npm run build:prod     # production build (needs the VITE_SUPABASE_* values)
 ```
 
-Production build (static files in `dist/`):
+Demo accounts (simulated — never use a real password): student `student@example.com` / `practice123`,
+admin `admin@example.com` / `admin12345` (admin sign-in is at `/admin/login`). Or use the
+**Demo mode** button (bottom-left; inside the menu on phones) → *View as demo student / admin*.
 
-```bash
-npm run build
-npm run preview    # serve the build locally
-```
+## Walkthrough for Rekha (about 8 minutes)
 
-### GitHub Pages preview
+1. **Home → Explore the courses → Daily Face Yoga Practice.** Expand the curriculum, play the free preview.
+2. **Enroll now.** Create an account, choose *Payment fails*, pay → failure screen, no access. **Try again** with *Payment succeeds* → enrolled. Open *Demo: replay the payment notification* → still one enrollment.
+3. **Start the first lesson.** Progress stays 0% until **Mark complete** (→ 10%). Go to the next lesson, then **My Courses**: *Continue learning* resumes where you left off, with the exact access end date and time.
+4. **Demo mode → View as demo student**: one active course with progress, one **expired** course with the locked/support state.
+5. **Demo mode → View as demo admin**:
+   - **Courses & lessons**: change a title or price, add a lesson, attach a video (simulated upload with cancel/retry), set Draft/Published/Archived, **Save course**, *Preview page*.
+   - **Students**: search, filter by course and Active/Expired/Revoked; **Manage** → extend, revoke or grant complimentary access — each needs a written reason; see lesson-by-lesson progress.
+   - **Orders & payments**: filter by status, course, currency, dates; totals kept per currency; complimentary access listed separately.
+   - **Website settings**: edit the headline → **Save draft** → **Preview** (only you see it) → **Publish**.
+   - **Audit history**: every change above, with who, when and why.
+6. **Demo mode → Reset demo data** to start again.
 
-Live preview: **https://vinitdeep.github.io/yogawithrekha/**
+## Permissions
 
-```bash
-npm run build:pages   # builds with base /yogawithrekha/ and adds 404.html for deep links
-```
-The contents of `dist/` are published to the `gh-pages` branch, which GitHub Pages serves.
+| | Guest | Student | Admin |
+|---|---|---|---|
+| Public pages, course details, preview lessons | ✓ | ✓ | ✓ |
+| Register, sign in, request password reset, begin checkout | ✓ | ✓ | — |
+| Own profile (name, country; email change needs confirmation) | | ✓ | ✓ |
+| Own orders, enrollments, access dates, progress | | ✓ | ✓ (all students) |
+| Paid lessons and videos | | only with **active** access (checked at that moment) | ✓ (preview) |
+| Mark complete / revisit completed lessons | | ✓ while access is active | |
+| Courses, lessons, videos, prices | | | ✓ |
+| Grant / extend / revoke / restore access (reason required) | | | ✓ |
+| Orders and complimentary-access records (read-only) | | | ✓ |
+| Website settings, FAQ, policies (draft → publish) | | | ✓ |
+| Audit history | | | ✓ |
+| Change roles | | | database owner only (`bootstrap_admin`) |
+| See or set passwords | | own only, via the auth provider | never |
 
-`dist/` can be uploaded to any static host. `public/.htaccess` adds the single-page-app fallback that Apache/Hostinger needs.
-The page sets `noindex` while it is a demo. Remove that from `index.html` at launch.
+In production every row above is enforced by the database (RLS) or an Edge Function — the route
+guards in the app are only for navigation. In the demo nothing is enforced.
 
-## Demo accounts
+## Admin-editable settings
 
-| Role    | Email                  | Password      |
-|---------|------------------------|---------------|
-| Student | `student@example.com`  | `practice123` |
-| Admin   | `admin@example.com`    | `admin12345`  |
+Brand name · offering name · founder’s public name · full name and qualifications (hidden until marked confirmed) ·
+portrait and logo with alt text · hero eyebrow, headline, accent words, supporting text, button and link labels ·
+about introduction and personal story · support email · Instagram link and handle · WhatsApp (shown only when verified) ·
+FAQ questions, answers, categories, order, show/hide, draft label · footer text and note ·
+privacy, terms and refund pages with draft flag · offered currencies (INR/USD/CAD) and default currency ·
+default access months for new courses · access start rule (on enrollment / on launch date) and launch date ·
+page titles and SEO descriptions for Home, Courses, About, FAQ, Contact.
 
-- **Admin panel:** go to `/admin/login` (also linked as *Admin login* in the footer). Visiting any `/admin` page while signed out redirects there. Student accounts are refused.
-- **Students:** use *Student Login* in the header.
-- **Reset demo data:** Admin → Settings → *Demo data*.
-
-## Suggested walkthrough (about 5 minutes)
-
-1. **Home → Explore the Courses → Daily Face Yoga Practice.** Expand the modules and play the preview placeholder.
-2. **Enroll now.** Create a new account in checkout, choose *Payment fails* and pay. You'll see the failure screen. Select **Try again**, choose *Payment succeeds* and pay again.
-3. **Start the first lesson → Mark complete.** The progress bar updates (0% → 10%). Use **Next lesson**. Opening a lesson does *not* mark it complete.
-4. Reload the page and open **My Courses**. Progress is still there, and *Continue learning* resumes the last lesson.
-5. Sign in as the demo student (`student@example.com`) to see: one active course with progress, and one **expired** course showing the locked/support state.
-6. Sign in at `/admin/login` as the demo admin:
-   - **Courses & lessons**: edit a title, price or lesson; attach a video link or "upload" a file (simulated progress); reorder; publish/unpublish; then **Save course**. The public site updates immediately.
-   - **Students**: search and filter; open a student to extend, revoke or grant access (each asks for confirmation).
-   - **Payments**: filter by status, currency and sample/demo records.
-   - **Settings**: portrait, Instagram, support email, WhatsApp (shown only when verified), FAQ, draft policies, access start rule.
+Per course: title (+ provisional flag), slug, short description, overview, audience, topics, image + alt,
+prices per currency (stored in paise/cents), sample-price flag, access months for new enrollments,
+Draft/Published/Archived, modules and lessons (order, duration, published, free preview, video,
+captions link, transcript).
 
 ## Where things live
 
-| Path | What it is |
-|------|------------|
-| `src/lib/seed.ts` | **All editable sample content**: courses, lessons, prices, FAQ, policies, sample students and orders |
-| `src/lib/store.tsx` | Demo "backend". Each action marks where a server endpoint goes in production |
-| `src/lib/dates.ts` | Six-calendar-month access calculation and the month-end rule |
-| `src/lib/types.ts` | Data model (users, courses, modules, lessons, enrollments, progress, orders, settings) |
-| `src/pages/` | Public, checkout, student and `admin/` pages |
-| `src/components/` | Layout, UI primitives (dialogs, toasts, fields), brand pieces, video player |
-| `src/styles.css` | Design tokens and all styles |
-| `public/images/rekha/` | Pose images: full scenes (`*.webp`) and background-removed cut-outs (`*-cutout.webp`). **AI-generated — replace before launch** (see DEMO-NOTES) |
-| `src/lib/motion.ts` | Scroll/animation engine (GSAP + Lenis), driven by `data-*` attributes |
+| Path | What |
+|---|---|
+| `src/lib/config.ts` | The demo/production boundary and config validation |
+| `src/lib/backend/types.ts` | The interface every screen uses |
+| `src/lib/demo/` | Demo backend + engine (simulated rules, unit-tested) |
+| `src/lib/supabase/backend.ts` | Production adapter (Supabase) |
+| `src/lib/access.ts`, `src/lib/dates.ts`, `src/lib/money.ts` | Access/progress rules, IST month-end expiry, minor-unit money |
+| `src/lib/seed.ts` | Demo sample content (fictional; prices are samples) |
+| `supabase/migrations/` | Schema, RLS, trusted functions, storage policies |
+| `supabase/functions/` | `create-order`, `payment-webhook`, `lesson-playback` (+ email) |
+| `tests/` | Unit, SQL-security (PGlite), payment and browser tests |
 
-Content can also be edited in the running demo through **Admin → Settings** and **Admin → Courses**. Those edits are saved in that browser only. **Admin → Settings → Demo data** restores `seed.ts`.
-
-Building with `VITE_DEMO_MODE=false` hides the demo credentials and "simulated" notices. A real launch still needs the backend described in DEMO-NOTES.md, because the demo's client-side login and admin guard are not security.
+See **DEMO-NOTES.md** for assumptions and open client decisions.

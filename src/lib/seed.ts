@@ -1,4 +1,4 @@
-import type { Course, DemoState, FaqItem, Lesson, Module, Settings, User } from './types';
+import type { AppState, Course, FaqItem, Lesson, Module, Settings, User } from './types';
 import { computeExpiry, daysAgo } from './dates';
 
 /**
@@ -9,10 +9,12 @@ import { computeExpiry, daysAgo } from './dates';
  *    confirmed course names, lesson lists or pricing.
  *  - Student, order and activity records are fictional SAMPLE records (recordSource: 'sample').
  *    No real personal information is used. Emails use the reserved example.com domain.
- *  - The full name and credential text are stored UNPUBLISHED until the client confirms them.
+ *  - The founder's full name and credentials are NOT included here: anything in this file ships in the
+ *    public JavaScript bundle. An admin enters them in Settings → About once Rekha confirms them.
+ *  - Prices are integers in minor units (paise / cents).
  */
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 /** Demo-only, non-cryptographic hash so plain passwords are not sitting in storage.
  *  Production must use a real auth provider; passwords never belong in the browser. */
@@ -63,7 +65,8 @@ function buildCourses(): Course[] {
       ],
       art: 'sage',
       image: '/images/rekha/warrior-ii.webp',
-      prices: { INR: 3499, USD: 59 },
+      imageAlt: 'Placeholder image: a yoga teacher in warrior II pose (AI-generated, to be replaced)',
+      prices: { INR: 349900, USD: 5900 },
       pricesSample: true,
       status: 'published',
       accessMonths: 6,
@@ -85,6 +88,7 @@ function buildCourses(): Course[] {
           lesson('A complete 15-minute session', 15, 'A full guided session combining what you have practised so far.'),
           lesson('A complete 20-minute session', 20, 'A slightly longer full session for days when you have more time.'),
           lesson('Making the practice your own', 16, 'How to choose sessions for your week and keep your routine sustainable.'),
+          { ...lesson('Bonus: a travel-friendly session', 15, 'Unpublished draft lesson — shows how admins can prepare lessons before releasing them.'), published: false },
         ]),
       ],
     },
@@ -109,7 +113,8 @@ function buildCourses(): Course[] {
       ],
       art: 'rose',
       image: '/images/rekha/seated-twist.webp',
-      prices: { INR: 2999, USD: 49 },
+      imageAlt: 'Placeholder image: a yoga teacher in a seated twist (AI-generated, to be replaced)',
+      prices: { INR: 299900, USD: 4900 },
       pricesSample: true,
       status: 'published',
       accessMonths: 6,
@@ -152,7 +157,8 @@ function buildCourses(): Course[] {
       ],
       art: 'sand',
       image: '/images/rekha/triangle-pose.webp',
-      prices: { INR: 2499, USD: 39 },
+      imageAlt: 'Placeholder image: a yoga teacher in triangle pose (AI-generated, to be replaced)',
+      prices: { INR: 249900, USD: 3900 },
       pricesSample: true,
       status: 'published',
       accessMonths: 6,
@@ -173,31 +179,44 @@ function buildCourses(): Course[] {
   ];
 }
 
+/** Default website settings (also used to fill gaps in production settings). */
+export function defaultSettings(): Settings {
+  return buildSettings();
+}
+
 function buildSettings(): Settings {
   const faqs: FaqItem[] = [
-    { id: 'f1', category: 'Enrollment', question: 'How do I enroll in a course?', answer: 'Open the course you are interested in, select Enroll, and complete checkout. Once your payment is confirmed, the course appears in your student dashboard straight away.', draft: false },
-    { id: 'f2', category: 'Enrollment', question: 'Do I need an account?', answer: 'Yes. You will create an account (or sign in) during checkout so your course access and progress are saved to you.', draft: false },
-    { id: 'f3', category: 'Login and lesson access', question: 'How do I access my lessons after enrolling?', answer: 'Sign in with Student Login, open your dashboard and select Continue Learning. Your lessons are organised into modules so you can follow them in order or revisit any lesson.', draft: false },
-    { id: 'f4', category: 'Login and lesson access', question: 'I forgot my password. What should I do?', answer: 'Use “Forgot password?” on the login page. We will send a reset link to your email address.', draft: false },
-    { id: 'f5', category: 'Prerecorded format', question: 'Are the lessons live or prerecorded?', answer: 'The Rekha Radiance Method courses are prerecorded video lessons. You can watch them whenever it suits you, pause, and repeat them as often as you like during your access period.', draft: false },
-    { id: 'f6', category: 'Prerecorded format', question: 'How long is each lesson?', answer: 'Lessons are typically around 15–20 minutes. Exact durations are shown beside each lesson on the course page.', draft: false },
-    { id: 'f7', category: 'Six-month access', question: 'How long can I access a course?', answer: 'Each course includes six months of access, starting from the date your enrollment is confirmed. Your exact access end date is shown on your dashboard.', draft: false },
-    { id: 'f8', category: 'Six-month access', question: 'Can I extend or renew my access?', answer: 'DRAFT — renewal options have not been confirmed yet. Please contact support if your access is ending and we will let you know what is available.', draft: true },
-    { id: 'f9', category: 'Progress tracking', question: 'How is my progress tracked?', answer: 'Select “Mark complete” at the end of a lesson. Your progress percentage is based on the lessons you have marked complete, and it is saved to your account so you can pick up where you left off.', draft: false },
-    { id: 'f10', category: 'Device compatibility', question: 'Which devices can I use?', answer: 'You can learn on a phone, tablet, laptop or desktop with an up-to-date web browser and a stable internet connection. There is no app to install.', draft: false },
-    { id: 'f11', category: 'Payment questions', question: 'Which payment methods and currencies are accepted?', answer: 'DRAFT — payment methods are being finalised. Prices may be shown in Indian rupees and US dollars; available payment options can depend on your country and card issuer and will be confirmed at checkout.', draft: true },
-    { id: 'f12', category: 'Payment questions', question: 'What is your refund policy?', answer: 'DRAFT — the refund policy is awaiting review. Please see the Refund Policy page for the current draft.', draft: true },
-    { id: 'f13', category: 'Technical support', question: 'Who do I contact if a video will not play?', answer: 'Try refreshing the page and checking your connection first. If it still does not play, contact support with the course and lesson name, and the device and browser you are using.', draft: false },
+    { id: 'f1', category: 'Enrollment', question: 'How do I enroll in a course?', answer: 'Open the course you are interested in, select Enroll, and complete checkout. Once your payment is confirmed, the course appears in your student dashboard straight away.', published: true, draft: false },
+    { id: 'f2', category: 'Enrollment', question: 'Do I need an account?', answer: 'Yes. You will create an account (or sign in) during checkout so your course access and progress are saved to you.', published: true, draft: false },
+    { id: 'f3', category: 'Login and lesson access', question: 'How do I access my lessons after enrolling?', answer: 'Sign in with Student Login, open your dashboard and select Continue Learning. Your lessons are organised into modules so you can follow them in order or revisit any lesson.', published: true, draft: false },
+    { id: 'f4', category: 'Login and lesson access', question: 'I forgot my password. What should I do?', answer: 'Use “Forgot password?” on the login page. We will send a reset link to your email address.', published: true, draft: false },
+    { id: 'f5', category: 'Prerecorded format', question: 'Are the lessons live or prerecorded?', answer: 'The Rekha Radiance Method courses are prerecorded video lessons. You can watch them whenever it suits you, pause, and repeat them as often as you like during your access period.', published: true, draft: false },
+    { id: 'f6', category: 'Prerecorded format', question: 'How long is each lesson?', answer: 'Lessons are typically around 15–20 minutes. Exact durations are shown beside each lesson on the course page.', published: true, draft: false },
+    { id: 'f7', category: 'Six-month access', question: 'How long can I access a course?', answer: 'Each course includes six months of access, starting from the date your enrollment is confirmed. Your exact access end date is shown on your dashboard.', published: true, draft: false },
+    { id: 'f8', category: 'Six-month access', question: 'Can I extend or renew my access?', answer: 'DRAFT — renewal options have not been confirmed yet. Please contact support if your access is ending and we will let you know what is available.', published: true, draft: true },
+    { id: 'f9', category: 'Progress tracking', question: 'How is my progress tracked?', answer: 'Select “Mark complete” at the end of a lesson. Your progress percentage is based on the lessons you have marked complete, and it is saved to your account so you can pick up where you left off.', published: true, draft: false },
+    { id: 'f10', category: 'Device compatibility', question: 'Which devices can I use?', answer: 'You can learn on a phone, tablet, laptop or desktop with an up-to-date web browser and a stable internet connection. There is no app to install.', published: true, draft: false },
+    { id: 'f11', category: 'Payment questions', question: 'Which payment methods and currencies are accepted?', answer: 'DRAFT — payment methods are being finalised. Prices may be shown in Indian rupees and US dollars; available payment options can depend on your country and card issuer and will be confirmed at checkout.', published: true, draft: true },
+    { id: 'f12', category: 'Payment questions', question: 'What is your refund policy?', answer: 'DRAFT — the refund policy is awaiting review. Please see the Refund Policy page for the current draft.', published: true, draft: true },
+    { id: 'f13', category: 'Technical support', question: 'Who do I contact if a video will not play?', answer: 'Try refreshing the page and checking your connection first. If it still does not play, contact support with the course and lesson name, and the device and browser you are using.', published: true, draft: false },
   ];
 
   return {
     brandName: 'Yoga with Rekha',
     courseBrand: 'Rekha Radiance Method',
     displayName: 'Rekha',
-    fullName: 'Rekha Sakthivadivel',
+    fullName: '',
     fullNameConfirmed: false,
-    credentials: 'Internationally certified yoga instructor · ERYT 500hrs',
+    credentials: '',
     credentialsConfirmed: false,
+    logoAlt: 'Yoga with Rekha',
+    portraitAlt: 'Portrait of Rekha',
+    heroEyebrow: 'Prerecorded face yoga · Rekha Radiance Method',
+    heroHeadline: 'Make time for yourself.',
+    heroAccent: 'yourself',
+    heroText: 'Guided face yoga lessons with Rekha that you can follow at home, at your own pace — with six months to practise and revisit every lesson.',
+    heroPrimaryCta: 'Explore the courses',
+    heroSecondaryCta: 'Meet Rekha',
     aboutIntro:
       'Rekha is the founder of Yoga with Rekha. She conducts online yoga classes and workshops and is preparing to bring her teaching into prerecorded learning through the Rekha Radiance Method.',
     personalStory: '',
@@ -206,8 +225,20 @@ function buildSettings(): Settings {
     instagramHandle: '@yoga_with_rekha',
     whatsappNumber: '',
     whatsappVerified: false,
+    footerTagline: 'Online yoga classes, workshops and — soon — the Rekha Radiance Method.',
+    footerNote: 'Policy pages are drafts awaiting review',
+    defaultCurrency: 'INR',
+    displayCurrencies: ['INR', 'USD'],
+    defaultAccessMonths: 6,
     accessStartRule: 'enrollment',
     launchDate: '2026-12-15',
+    seo: {
+      home: { title: '', description: 'Explore guided, prerecorded face yoga lessons with Rekha. Learn at your own pace with six months of course access.' },
+      courses: { title: 'Courses', description: 'Prerecorded face yoga courses from the Rekha Radiance Method, each with six months of access.' },
+      about: { title: 'About Rekha', description: 'Meet Rekha, founder of Yoga with Rekha, who teaches online yoga classes and workshops.' },
+      faq: { title: 'FAQ', description: 'Answers to common questions about enrolling, lesson access, six-month access, payments and support.' },
+      contact: { title: 'Contact', description: 'Get in touch with Yoga with Rekha.' },
+    },
     faqs,
     policies: {
       privacy: {
@@ -234,7 +265,8 @@ function buildSettings(): Settings {
 
 function buildUsers(): User[] {
   const s = (id: string, name: string, email: string, country: string, d: number): User => ({
-    id, name, email, country, role: 'student', passwordHash: demoHash('sample-not-loginable'),
+    // Sample students have no password at all, so nobody can sign in as them.
+    id, name, email, country, role: 'student',
     createdAt: daysAgo(d), source: 'sample',
   });
   return [
@@ -249,15 +281,15 @@ function buildUsers(): User[] {
   ];
 }
 
-export function createSeedState(): DemoState {
+export function createSeedState(): AppState {
   n = 0;
   const courses = buildCourses();
   const users = buildUsers();
   const settings = buildSettings();
-  const enrollments: DemoState['enrollments'] = [];
-  const orders: DemoState['orders'] = [];
-  const progress: DemoState['progress'] = {};
-  const activity: DemoState['activity'] = [];
+  const enrollments: AppState['enrollments'] = [];
+  const orders: AppState['orders'] = [];
+  const progress: AppState['progress'] = {};
+  const activity: AppState['activity'] = [];
   const byId = Object.fromEntries(courses.map((c) => [c.id, c]));
   const allLessons = (cid: string) => byId[cid].modules.flatMap((m) => m.lessons);
 
@@ -272,7 +304,7 @@ export function createSeedState(): DemoState {
     const orderId = `ord-${++ref}`;
     orders.push({
       id: orderId, userId, courseId, courseTitle: c.title, customerName: u.name, customerEmail: u.email,
-      amount: c.prices[currency], currency, status, provider: 'simulated', reference: `SIM-${ref}-${(ref * 7919).toString(36).toUpperCase()}`,
+      amount: c.prices[currency] ?? 0, currency, status, provider: 'simulated', reference: `SIM-${ref}-${(ref * 7919).toString(36).toUpperCase()}`,
       createdAt: at, updatedAt: at, recordSource,
     });
     if (status !== 'paid') {
@@ -282,10 +314,10 @@ export function createSeedState(): DemoState {
     const eid = `enr-${ref}`;
     enrollments.push({
       id: eid, userId, courseId, orderId, startAt: at, expiresAt: computeExpiry(at, c.accessMonths), revoked: false,
-      source: 'purchase', recordSource, history: [{ at, action: 'Enrolled after payment' }],
+      source: 'purchase', recordSource, history: [{ at, action: 'Enrolled after payment', by: 'system' }],
     });
     const lessons = allLessons(courseId);
-    const completed = lessons.slice(0, completedCount).map((l) => l.id);
+    const completed = Object.fromEntries(lessons.slice(0, completedCount).map((l, i) => [l.id, daysAgo(Math.max(0, d - 1 - i))]));
     progress[`${userId}:${courseId}`] = {
       completed, lastLessonId: lessons[Math.min(completedCount, lessons.length - 1)]?.id, updatedAt: daysAgo(Math.max(0, d - 5)),
     };
@@ -312,9 +344,12 @@ export function createSeedState(): DemoState {
   return {
     version: STATE_VERSION,
     users, courses, enrollments, progress, orders, activity,
+    audit: [],
     messages: [],
     settings,
-    sessionUserId: null,
+    settingsDraft: null,
+    session: null,
     resetTokens: [],
+    loginFailures: {},
   };
 }

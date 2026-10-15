@@ -1020,3 +1020,128 @@ body::after { mix-blend-mode: normal; opacity: 0.1; }
 @media (min-width: 761px) and (max-height: 760px) { .courses-show .course-rail .course-card { width: clamp(240px, min(28vw, calc((100svh - 470px) * 1.5)), 400px); } .courses-show .course-card .badge-row { display: none; } }
 @media (min-width: 761px) and (max-height: 760px) { .courses-show .course-card .badge-row { display: flex; } .courses-show .course-rail .course-card { width: clamp(230px, min(26vw, calc((100svh - 500px) * 1.55)), 380px); } .courses-show .course-card-body { gap: 6px; } }
 @media (min-width: 761px) and (max-height: 760px) { .courses-show .course-rail .course-card { width: clamp(270px, 27vw, 380px); } .courses-show .course-art { aspect-ratio: 2 / 1; } .courses-show .course-card .badge-row { flex-wrap: nowrap; } .courses-show .course-card .badge { font-size: 0.66rem; padding: 2px 8px; } }
+
+/* =====================================================================
+   UPGRADE LAYER (Oct 2026): demo/production boundary, learner footer,
+   admin hierarchy, accessible forms. Uses the existing tokens only.
+   ===================================================================== */
+
+/* Boot / configuration screens */
+.boot { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; background: var(--ivory); color: var(--ink); }
+.boot-error h1 { font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.2rem); margin: 0; }
+.boot-error p { max-width: 56ch; margin: 0; color: var(--ink-soft); }
+.config-problems { text-align: left; max-width: 640px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 20px 16px 36px; margin: 0; }
+.config-problems li { margin: 6px 0; }
+
+/* Homepage hero: shorter headline, one primary action, more room for the intro and portrait */
+.hero h1 { font-size: clamp(2.5rem, 1.3rem + 3.5vw, 4.6rem); max-width: 12ch; }
+.hero .lead { max-width: 46ch; }
+.hero-actions { gap: 24px; align-items: center; }
+@media (min-width: 761px) and (max-height: 760px) { .hero h1 { font-size: clamp(2.3rem, 1rem + 3.6vh, 3.8rem); } }
+
+/* Compact footer for learning pages */
+.learner-footer { border-top: 1px solid var(--line); background: var(--paper); padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); margin-top: 48px; }
+.learner-footer-inner { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; justify-content: space-between; }
+.learner-footer nav { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.learner-footer nav a { color: var(--ink-soft); font-size: 0.9rem; text-decoration: none; padding: 6px 0; }
+.learner-footer nav a:hover { color: var(--sage-ink); text-decoration: underline; }
+
+/* Demo mode control + draft preview bar */
+.demo-pill { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 60; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong); background: rgba(253, 251, 247, 0.96); color: var(--ink); font: 600 0.8rem var(--sans); cursor: pointer; box-shadow: var(--shadow); }
+.demo-pill:hover { background: var(--surface); }
+.demo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--clay); }
+body:has(.preview-bar) .demo-pill { bottom: calc(80px + env(safe-area-inset-bottom)); }
+.mobile-nav .demo-dot { display: inline-block; }
+.preview-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 61; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 14px 10px 18px; border-radius: 16px; background: var(--forest); color: var(--on-forest); box-shadow: var(--shadow-lg); max-width: calc(100vw - 32px); }
+.preview-bar .small { color: var(--on-forest-soft); }
+@media (max-width: 760px) {
+  /* Keep the enroll bar clear: the demo pill sits above it, never on top of its buttons. */
+  /* Phones: the demo control lives in the menu so it never covers page content. */
+  .demo-pill { display: none; }
+  .preview-bar { left: 16px; right: 16px; transform: none; }
+}
+.rule { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
+
+/* Dashboard and lessons */
+.resume-card { margin: 24px 0 36px; background: var(--sage-soft); border-color: #cddbc9; }
+.transcript { margin: 16px 0; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 14px; background: var(--surface); }
+.transcript summary { cursor: pointer; font-weight: 600; }
+.transcript p { margin: 10px 0 0; }
+.player-error { display: grid; place-items: center; padding: 20px; background: var(--paper); }
+
+/* Checkout summary stays in view on desktop only */
+@media (min-width: 1025px) { .checkout-summary { position: sticky; top: 96px; } }
+.admin-preview-note { padding-top: 96px; }
+
+/* Buttons: make destructive actions clearly different from primary ones */
+.btn-danger-outline { background: transparent; color: var(--err); box-shadow: inset 0 0 0 1.5px currentColor; }
+.btn-danger-outline::before { background: var(--err-bg); }
+.btn-danger-outline:hover { color: #862d26; }
+.icon-btn-danger { color: var(--err); }
+.icon-btn-danger:hover { background: var(--err-bg); }
+.link-danger { color: var(--err); }
+.is-busy { opacity: 0.7; pointer-events: none; }
+
+/* Forms */
+.fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; margin: 0; min-width: 0; }
+.fieldset > legend { font-weight: 700; padding: 0 6px; }
+.form-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+span.error { color: var(--err); font-size: 0.85rem; display: inline-flex; gap: 6px; align-items: center; }
+.unsaved { color: var(--warn); font-weight: 600; }
+.is-hidden-item { opacity: 0.8; background: repeating-linear-gradient(135deg, transparent 0 10px, rgba(0, 0, 0, 0.015) 10px 20px); }
+.ce-img-preview { width: 260px; max-width: 100%; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); }
+.editor-stack { display: grid; gap: 20px; }
+.danger-zone { border-color: #ecbcb7; }
+.danger-zone h2 { color: var(--err); }
+
+/* Admin layout: clearer hierarchy */
+.admin-side > nav { display: flex; flex-direction: column; gap: 4px; }
+.admin-top-sticky { position: sticky; top: 0; z-index: 20; background: rgba(246, 244, 239, 0.94); backdrop-filter: blur(8px); margin: 0 calc(-1 * clamp(16px, 3vw, 44px)) 20px; padding: 14px clamp(16px, 3vw, 44px); border-bottom: 1px solid var(--line); }
+.stat-grid { gap: 16px; margin-bottom: 24px; }
+.stat .v-money { display: grid; font-size: 1.35rem; padding-top: 6px; gap: 2px; }
+.overview-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.toolbar { align-items: flex-end; gap: 12px 14px; }
+.field-inline { display: grid; gap: 4px; }
+.field-inline > label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.toolbar .field-inline .input { max-width: none; width: 220px; }
+.totals-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
+.admin-actions { justify-content: space-between; margin-top: 12px; }
+.lesson-progress { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.lesson-progress li { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; }
+.lesson-progress .st { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; }
+.lesson-progress .st.done { background: var(--sage-deep); border-color: var(--sage-deep); color: #fff; }
+
+/* Enrollment chart: full, wrapping course titles */
+.bar-chart { list-style: none; padding: 0; margin: 0; }
+.bar-chart .b { grid-template-columns: minmax(0, 1fr) minmax(90px, 1.1fr) 36px; }
+.bar-chart .b-label { overflow-wrap: anywhere; line-height: 1.3; }
+
+@media (max-width: 1024px) {
+  .overview-grid { grid-template-columns: 1fr; }
+  .admin-side { align-items: center; }
+  .admin-side > nav { flex-direction: row; }
+  .admin-side .side-foot { display: flex; margin: 0 0 0 auto; padding: 0 8px; flex-shrink: 0; }
+  .admin-side .side-foot > span { display: none; }
+}
+@media (max-width: 760px) {
+  .form-row-3 { grid-template-columns: 1fr; }
+  .toolbar .field-inline, .toolbar .field-inline .input, .toolbar .field-inline .select { width: 100%; }
+  .bar-chart .b { grid-template-columns: 1fr 36px; }
+  .bar-chart .b .track { grid-column: 1 / -1; grid-row: 2; }
+  .admin-top-sticky { position: static; margin: 0 0 16px; padding: 0; background: none; border: 0; backdrop-filter: none; }
+  /* Tables become stacked cards so nothing overflows sideways */
+  .table-responsive thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table-responsive, .table-responsive tbody, .table-responsive tr, .table-responsive td { display: block; width: 100%; }
+  .table-responsive tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .table-responsive td { border: 0; padding: 6px 14px; }
+  .table-responsive td[data-label]::before { content: attr(data-label); display: block; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  .table-responsive td.num { text-align: left; }
+  .learner-footer-inner { flex-direction: column; align-items: flex-start; }
+}
+
+/* Visible keyboard focus on dark surfaces too */
+.admin-side a:focus-visible, .admin-side button:focus-visible, .site-footer a:focus-visible, .preview-bar :focus-visible, .section-dark :focus-visible { outline-color: var(--rose); }
+
+/* Fields in a row keep their natural height (a neighbour's hint text must not stretch the input). */
+.form-row { align-items: start; }
+.form-row > .field { align-content: start; }

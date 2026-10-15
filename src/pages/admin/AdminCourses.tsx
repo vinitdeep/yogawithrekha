@@ -1,44 +1,60 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { accessStatus, courseLessons, courseMinutes, useStore } from '../../lib/store';
-import type { ArtTone, Course, Lesson, Module } from '../../lib/types';
+import { CURRENCIES, type ArtTone, type Course, type Currency, type Lesson, type Module } from '../../lib/types';
 import { Icon } from '../../components/Icon';
 import { CourseArt, formatMoney } from '../../components/brand';
 import { ConfirmDialog, Dialog, Field, Notice, TextArea, usePageTitle, useToast } from '../../components/ui';
+import { validateCourse } from '../../lib/demo/engine';
+import { CURRENCY_NAME, parseMajor, toMajorString } from '../../lib/money';
+import { IS_DEMO, PRODUCTION_CONFIG } from '../../lib/config';
 import { sessionUploads } from '../../lib/uploads';
 import { formatShortDate } from '../../lib/dates';
 
-const newId = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `id-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
+const STATUS_BADGE = { published: ['badge-ok', 'Published'], draft: ['badge-muted', 'Draft'], archived: ['badge-warn', 'Archived'] } as const;
 
 export function AdminCourses() {
-  const { state, createCourse } = useStore();
+  const { state, site, createCourse } = useStore();
   const nav = useNavigate();
   const toast = useToast();
+  const [busy, setBusy] = useState(false);
   usePageTitle('Courses');
   return (
     <>
       <div className="admin-top">
-        <div><h1>Courses &amp; lessons</h1><p className="muted" style={{ margin: 0 }}>Create courses, organise modules and lessons, and attach videos.</p></div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => { const c = createCourse(); toast('Draft course created'); nav(`/admin/courses/${c.id}`); }}>
+        <div><h1>Courses &amp; lessons</h1><p className="muted" style={{ margin: 0 }}>Create courses, organise modules and lessons, attach videos and set prices.</p></div>
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={async () => {
+          setBusy(true);
+          const r = await createCourse();
+          setBusy(false);
+          if (!r.ok) { toast(r.error, 'err'); return; }
+          toast('Draft course created');
+          nav(`/admin/courses/${r.data.id}`);
+        }}>
           <Icon name="plus" size={16} /> New course
         </button>
       </div>
       <div className="table-wrap">
-        <table className="table">
-          <thead><tr><th scope="col">Course</th><th scope="col">Status</th><th scope="col">Lessons</th><th scope="col">Videos attached</th><th scope="col">Price (INR / USD)</th><th scope="col">Active students</th><th scope="col">Updated</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+        <table className="table table-responsive">
+          <thead><tr><th scope="col">Course</th><th scope="col">Status</th><th scope="col">Lessons</th><th scope="col">Videos</th><th scope="col">Prices</th><th scope="col">Active students</th><th scope="col">Updated</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {state.courses.map((c) => {
               const all = courseLessons(c, true);
               const withVideo = all.filter((l) => l.video).length;
+              const [cls, label] = STATUS_BADGE[c.status];
               return (
                 <tr key={c.id}>
-                  <td><strong>{c.title}</strong>{c.titleProvisional && <> <span className="badge badge-warn">Provisional</span></>}<br /><span className="muted small">/{c.slug}</span></td>
-                  <td>{c.status === 'published' ? <span className="badge badge-ok">Published</span> : <span className="badge badge-muted">Draft</span>}</td>
-                  <td>{all.length} <span className="muted small">({all.filter((l) => !l.published).length} unpublished)</span></td>
-                  <td>{withVideo} / {all.length}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatMoney(c.prices.INR, 'INR')} / {formatMoney(c.prices.USD, 'USD')}{c.pricesSample && <><br /><span className="badge badge-outline">Sample</span></>}</td>
-                  <td>{state.enrollments.filter((e) => e.courseId === c.id && accessStatus(e) === 'active').length}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatShortDate(c.updatedAt)}</td>
+                  <td data-label="Course"><strong>{c.title}</strong>{c.titleProvisional && <> <span className="badge badge-warn">Provisional</span></>}<br /><span className="muted small">/courses/{c.slug}</span></td>
+                  <td data-label="Status"><span className={`badge ${cls}`}>{label}</span></td>
+                  <td data-label="Lessons">{all.length} <span className="muted small">({all.filter((l) => !l.published).length} unpublished)</span></td>
+                  <td data-label="Videos">{withVideo} / {all.length}</td>
+                  <td data-label="Prices" style={{ whiteSpace: 'nowrap' }}>
+                    {site.displayCurrencies.map((cur) => <div key={cur}>{c.prices[cur] !== undefined ? formatMoney(c.prices[cur]!, cur) : <span className="muted">No {cur} price</span>}</div>)}
+                    {c.pricesSample && <span className="badge badge-outline">Sample</span>}
+                  </td>
+                  <td data-label="Active students">{state.enrollments.filter((e) => e.courseId === c.id && accessStatus(e) === 'active').length}</td>
+                  <td data-label="Updated" style={{ whiteSpace: 'nowrap' }}>{formatShortDate(c.updatedAt)}</td>
                   <td className="num"><Link to={`/admin/courses/${c.id}`} className="btn btn-secondary btn-sm">Edit<span className="sr-only"> {c.title}</span></Link></td>
                 </tr>
               );
@@ -46,73 +62,91 @@ export function AdminCourses() {
           </tbody>
         </table>
       </div>
-      <p className="muted small" style={{ marginTop: 16 }}>Rekha plans three courses; their final titles and curricula are not confirmed. The lesson counts here are samples and are not a commitment to a particular number of videos per course.</p>
+      <p className="muted small" style={{ marginTop: 16 }}>Rekha plans three courses; their final titles and curricula are not confirmed. Lesson counts here are samples, not a commitment to a particular number of videos per course.</p>
     </>
   );
 }
 
+type PriceText = Partial<Record<Currency, string>>;
+const priceTextOf = (c: Course): PriceText => Object.fromEntries(CURRENCIES.map((cur) => [cur, toMajorString(c.prices[cur], cur)]));
+
 export function AdminCourseEditor() {
   const { id } = useParams();
-  const { state, saveCourse, deleteCourse } = useStore();
+  const { state, site, saveCourse, deleteCourse, uploadImage } = useStore();
   const nav = useNavigate();
   const toast = useToast();
   const original = state.courses.find((c) => c.id === id);
   const [draft, setDraft] = useState<Course | null>(original ?? null);
+  const [priceText, setPriceText] = useState<PriceText>(() => (original ? priceTextOf(original) : {}));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [imgBusy, setImgBusy] = useState(false);
   const [editing, setEditing] = useState<{ moduleId: string; lesson: Lesson; isNew: boolean } | null>(null);
   const [confirmDel, setConfirmDel] = useState<null | { kind: 'course' } | { kind: 'module'; id: string } | { kind: 'lesson'; moduleId: string; id: string }>(null);
   usePageTitle(draft ? `Edit: ${draft.title}` : 'Edit course');
 
-  useEffect(() => { if (original && !draft) setDraft(original); }, [original, draft]);
-  const dirty = !!draft && !!original && JSON.stringify({ ...draft, updatedAt: '' }) !== JSON.stringify({ ...original, updatedAt: '' });
+  useEffect(() => { if (original && !draft) { setDraft(original); setPriceText(priceTextOf(original)); } }, [original, draft]);
 
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
+  // Prices are edited as text and converted to integer minor units.
+  const withPrices = (c: Course): Course => {
+    const prices: Course['prices'] = {};
+    for (const cur of CURRENCIES) {
+      const t = (priceText[cur] ?? '').trim();
+      if (!t) continue;
+      const v = parseMajor(t, cur);
+      prices[cur] = v === null ? -1 : v;
+    }
+    return { ...c, prices };
+  };
+  const normalised = draft ? withPrices(draft) : null;
+  const dirty = !!normalised && !!original && JSON.stringify({ ...normalised, updatedAt: '' }) !== JSON.stringify({ ...original, updatedAt: '' });
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && !saving && currentLocation.pathname !== nextLocation.pathname);
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => { if (dirty) e.preventDefault(); };
     window.addEventListener('beforeunload', onUnload);
     return () => window.removeEventListener('beforeunload', onUnload);
   }, [dirty]);
 
-  if (!original || !draft) {
+  if (!original || !draft || !normalised) {
     return <div className="empty"><h1 style={{ fontSize: '1.4rem' }}>Course not found</h1><Link to="/admin/courses" className="btn btn-secondary btn-sm">Back to courses</Link></div>;
   }
 
   const set = <K extends keyof Course>(k: K, v: Course[K]) => setDraft({ ...draft, [k]: v });
   const setModules = (modules: Module[]) => setDraft({ ...draft, modules });
   const enrolledCount = state.enrollments.filter((e) => e.courseId === draft.id).length;
+  const orderCount = state.orders.filter((o) => o.courseId === draft.id).length;
+  const activeCount = state.enrollments.filter((e) => e.courseId === draft.id && accessStatus(e) === 'active').length;
+  const completionsFor = (lessonId: string) => Object.entries(state.progress).filter(([k, p]) => k.endsWith(`:${draft.id}`) && p.completed[lessonId]).length;
 
-  const validate = () => {
-    const er: Record<string, string> = {};
-    if (!draft.title.trim()) er.title = 'A course title is required.';
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(draft.slug)) er.slug = 'Use lowercase letters, numbers and single hyphens only.';
-    else if (state.courses.some((c) => c.id !== draft.id && c.slug === draft.slug)) er.slug = 'Another course already uses this web address.';
-    if (!(draft.prices.INR >= 0)) er.inr = 'Enter a price of 0 or more.';
-    if (!(draft.prices.USD >= 0)) er.usd = 'Enter a price of 0 or more.';
-    if (!(draft.accessMonths >= 1 && draft.accessMonths <= 36)) er.months = 'Choose between 1 and 36 months.';
-    if (draft.status === 'published') {
-      if (!courseLessons(draft).length) er.status = 'A published course needs at least one published lesson.';
-      if (draft.prices.INR <= 0 || draft.prices.USD <= 0) er.status = 'Set prices in both currencies before publishing.';
-    }
+  const save = async () => {
+    const er = validateCourse(state, normalised);
+    for (const cur of CURRENCIES) if (normalised.prices[cur] === -1) er[`price_${cur}`] = 'Enter an amount like 3499 or 59.99.';
     setErrors(er);
-    return Object.keys(er).length === 0;
+    if (Object.keys(er).length) {
+      toast('Please fix the highlighted fields', 'err');
+      document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+    setSaving(true);
+    const r = await saveCourse(normalised);
+    setSaving(false);
+    if (!r.ok) { setErrors({ form: r.error }); toast(r.error, 'err'); return; }
+    setDraft(r.data);
+    setPriceText(priceTextOf(r.data));
+    toast(r.data.status === 'published' ? 'Course saved — the website has been updated' : 'Course saved');
   };
 
-  const save = () => {
-    if (!validate()) { toast('Please fix the highlighted fields', 'err'); return; }
-    saveCourse(draft);
-    toast('Course saved — the website has been updated');
-  };
-
-  const onImage = (e: ChangeEvent<HTMLInputElement>) => {
+  const onImage = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { setErrors({ ...errors, image: 'Please choose a JPG, PNG or WebP image.' }); return; }
-    if (f.size > 1.5 * 1024 * 1024) { setErrors({ ...errors, image: 'Demo limit: images must be under 1.5 MB (production will resize and optimise uploads).' }); return; }
-    const r = new FileReader();
-    r.onload = () => { set('image', String(r.result)); setErrors({ ...errors, image: '' }); };
-    r.onerror = () => setErrors({ ...errors, image: 'The image could not be read. Please try another file.' });
-    r.readAsDataURL(f);
+    setImgBusy(true);
+    const r = await uploadImage(f, 'course');
+    setImgBusy(false);
+    if (!r.ok) { setErrors({ ...errors, image: r.error }); return; }
+    setDraft((d) => (d ? { ...d, image: r.data, imageAlt: '' } : d));
+    setErrors({ ...errors, image: '', imageAlt: 'Describe the new image for screen-reader users.' });
   };
 
   const move = <T,>(arr: T[], i: number, d: -1 | 1) => {
@@ -125,9 +159,17 @@ export function AdminCourseEditor() {
 
   const updateModule = (mid: string, fn: (m: Module) => Module) => setModules(draft.modules.map((m) => (m.id === mid ? fn(m) : m)));
 
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!confirmDel) return;
-    if (confirmDel.kind === 'course') { deleteCourse(draft.id); toast('Course deleted'); setConfirmDel(null); nav('/admin/courses'); return; }
+    if (confirmDel.kind === 'course') {
+      const r = await deleteCourse(draft.id);
+      setConfirmDel(null);
+      if (!r.ok) { toast(r.error, 'err'); return; }
+      toast('Course deleted');
+      setDraft(null);
+      nav('/admin/courses', { replace: true });
+      return;
+    }
     if (confirmDel.kind === 'module') setModules(draft.modules.filter((m) => m.id !== confirmDel.id));
     if (confirmDel.kind === 'lesson') updateModule(confirmDel.moduleId, (m) => ({ ...m, lessons: m.lessons.filter((l) => l.id !== confirmDel.id) }));
     setConfirmDel(null);
@@ -138,34 +180,43 @@ export function AdminCourseEditor() {
       onChange={(e) => set(key, e.target.value.split('\n').map((x) => x.replace(/^\s+/, '')).filter((x, i, a) => x || i < a.length - 1))} />
   );
 
+  const delLesson = confirmDel?.kind === 'lesson' ? draft.modules.find((m) => m.id === confirmDel.moduleId)?.lessons.find((l) => l.id === confirmDel.id) : undefined;
+  const delModule = confirmDel?.kind === 'module' ? draft.modules.find((m) => m.id === confirmDel.id) : undefined;
+  const delModuleCompletions = delModule ? delModule.lessons.reduce((s, l) => s + completionsFor(l.id), 0) : 0;
+  const delLessonCompletions = delLesson ? completionsFor(delLesson.id) : 0;
+
   return (
     <>
-      <div className="admin-top">
+      <div className="admin-top admin-top-sticky">
         <div>
           <nav className="breadcrumbs" aria-label="Breadcrumb" style={{ marginBottom: 6 }}><Link to="/admin/courses">Courses</Link> / <span aria-current="page">Edit</span></nav>
-          <h1>{draft.title || 'Untitled course'}</h1>
-          <p className="muted small" style={{ margin: 0 }} aria-live="polite">{dirty ? 'You have unsaved changes.' : 'All changes saved.'}</p>
+          <h1>{draft.title || 'Untitled course'} <span className={`badge ${STATUS_BADGE[original.status][0]}`} style={{ verticalAlign: 'middle' }}>{STATUS_BADGE[original.status][1]}</span></h1>
+          <p className={`small ${dirty ? 'unsaved' : 'muted'}`} style={{ margin: 0 }} aria-live="polite">{dirty ? '● Unsaved changes' : 'All changes saved.'}</p>
         </div>
         <div className="row">
-          {original.status === 'published' && <Link to={`/courses/${original.slug}`} className="btn btn-ghost btn-sm" target="_blank"><Icon name="external" size={16} /> View live page</Link>}
-          <button type="button" className="btn btn-secondary btn-sm" disabled={!dirty} onClick={() => { setDraft(original); setErrors({}); }}>Discard changes</button>
-          <button type="button" className="btn btn-primary btn-sm" disabled={!dirty} onClick={save}>Save course</button>
+          <a href={`${import.meta.env.BASE_URL}courses/${original.slug}`} className="btn btn-ghost btn-sm" target="_blank" rel="noopener"><Icon name="external" size={16} /> {original.status === 'published' ? 'View live page' : 'Preview page'}</a>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!dirty || saving} onClick={() => { setDraft(original); setPriceText(priceTextOf(original)); setErrors({}); }}>Discard changes</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : 'Save course'}</button>
         </div>
       </div>
+      {errors.form && <Notice kind="err" title="The course was not saved">{errors.form}</Notice>}
+      {dirty && <p className="muted small">The preview page shows the last <strong>saved</strong> version. Save to see your changes there.</p>}
 
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', gap: 20 }}>
+      <div className="editor-stack">
         <section className="card" aria-labelledby="ce-basics">
           <h2 id="ce-basics" style={{ fontSize: '1.25rem' }}>Details</h2>
           <div className="form">
             <div className="form-row">
               <Field label="Course title" required value={draft.title} error={errors.title} onChange={(e) => set('title', e.target.value)} />
-              <Field label="Web address (slug)" required value={draft.slug} error={errors.slug} hint={`/courses/${draft.slug}`} onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} />
+              <Field label="Web address (slug)" required value={draft.slug} error={errors.slug}
+                hint={enrolledCount ? `/courses/${draft.slug} — changing this breaks links students may have saved.` : `/courses/${draft.slug}`}
+                onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} />
             </div>
             <label className="check"><input type="checkbox" checked={draft.titleProvisional} onChange={(e) => set('titleProvisional', e.target.checked)} /><span>Title is provisional (shows a “Sample title” label on the website)</span></label>
-            <Field label="Short tagline" value={draft.tagline} onChange={(e) => set('tagline', e.target.value)} />
-            <TextArea label="Description" value={draft.description} onChange={(e) => set('description', e.target.value)} />
+            <Field label="Short description" hint="One sentence for course cards and the top of the course page." value={draft.tagline} onChange={(e) => set('tagline', e.target.value)} />
+            <TextArea label="Overview" hint="Describe the practice honestly. Avoid medical claims or promises about appearance." value={draft.description} onChange={(e) => set('description', e.target.value)} />
             <div className="form-row">
-              {listInput('Who it’s for', 'audience', 'One point per line.')}
+              {listInput('Intended audience', 'audience', 'One point per line.')}
               {listInput('Learning topics', 'topics', 'One topic per line.')}
             </div>
             <label className="check"><input type="checkbox" checked={draft.curriculumSample} onChange={(e) => set('curriculumSample', e.target.checked)} /><span>Curriculum is a sample (shows “Sample curriculum” labels)</span></label>
@@ -175,25 +226,31 @@ export function AdminCourseEditor() {
         <section className="card" aria-labelledby="ce-img">
           <h2 id="ce-img" style={{ fontSize: '1.25rem' }}>Course image</h2>
           <div className="row" style={{ alignItems: 'flex-start', gap: 20 }}>
-            <div style={{ width: 260, borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--line)' }}><CourseArt course={draft} /></div>
+            <div className="ce-img-preview"><CourseArt course={draft} /></div>
             <div className="stack" style={{ flex: 1, minWidth: 220 }}>
-              <div className="field">
-                <span className="label">Placeholder artwork colour</span>
-                <div className="row">
-                  {(['sage', 'rose', 'sand'] as ArtTone[]).map((t) => (
-                    <label key={t} className="check" style={{ textTransform: 'capitalize' }}><input type="radio" name="art" checked={draft.art === t} onChange={() => set('art', t)} />{t}</label>
-                  ))}
-                </div>
-              </div>
               <div className="row">
-                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                  <Icon name="upload" size={16} /> {draft.image ? 'Replace image' : 'Upload image'}
-                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={onImage} />
+                <label className={`btn btn-secondary btn-sm ${imgBusy ? 'is-busy' : ''}`} style={{ cursor: 'pointer' }}>
+                  <Icon name="upload" size={16} /> {imgBusy ? 'Uploading…' : draft.image ? 'Replace image' : 'Upload image'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={onImage} disabled={imgBusy} />
                 </label>
-                {draft.image && <button type="button" className="btn btn-ghost btn-sm" onClick={() => set('image', undefined)}>Remove image</button>}
+                {draft.image && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft({ ...draft, image: undefined, imageAlt: '' })}>Remove image</button>}
               </div>
-              {errors.image && <span className="error" style={{ color: 'var(--err)', fontSize: '0.85rem' }} role="alert">{errors.image}</span>}
-              <p className="muted small" style={{ margin: 0 }}>Use client-approved photography only. Never use stock or AI-generated images of people presented as Rekha.</p>
+              {errors.image && <span className="error" role="alert">{errors.image}</span>}
+              {draft.image ? (
+                <Field label="Image description (alt text)" required value={draft.imageAlt} error={errors.imageAlt}
+                  hint="What the image shows, e.g. “Rekha demonstrating a seated breathing practice”. Label placeholders as placeholders."
+                  onChange={(e) => set('imageAlt', e.target.value)} />
+              ) : (
+                <div className="field">
+                  <span className="label">Placeholder artwork colour</span>
+                  <div className="row">
+                    {(['sage', 'rose', 'sand'] as ArtTone[]).map((t) => (
+                      <label key={t} className="check" style={{ textTransform: 'capitalize' }}><input type="radio" name="art" checked={draft.art === t} onChange={() => set('art', t)} />{t}</label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="muted small" style={{ margin: 0 }}>Use client-approved photography only. Never present stock or AI-generated images of people as Rekha.</p>
             </div>
           </div>
         </section>
@@ -201,22 +258,31 @@ export function AdminCourseEditor() {
         <section className="card" aria-labelledby="ce-price">
           <h2 id="ce-price" style={{ fontSize: '1.25rem' }}>Pricing, access &amp; status</h2>
           <div className="form">
-            <div className="form-row">
-              <Field label="Price in INR (₹)" type="number" min={0} step={1} inputMode="numeric" value={draft.prices.INR} error={errors.inr} onChange={(e) => set('prices', { ...draft.prices, INR: Number(e.target.value) })} />
-              <Field label="Price in USD ($)" type="number" min={0} step={1} inputMode="decimal" value={draft.prices.USD} error={errors.usd} onChange={(e) => set('prices', { ...draft.prices, USD: Number(e.target.value) })} />
+            <div className="form-row form-row-3">
+              {CURRENCIES.map((cur) => {
+                const offered = site.displayCurrencies.includes(cur);
+                return (
+                  <Field key={cur} label={`Price in ${cur}`} inputMode="decimal" value={priceText[cur] ?? ''} error={errors[`price_${cur}`]}
+                    hint={offered ? `${CURRENCY_NAME[cur]} — required to publish.` : `${CURRENCY_NAME[cur]} — not offered on the site (Settings → Commerce).`}
+                    onChange={(e) => setPriceText({ ...priceText, [cur]: e.target.value })} />
+                );
+              })}
             </div>
             <label className="check"><input type="checkbox" checked={draft.pricesSample} onChange={(e) => set('pricesSample', e.target.checked)} /><span>Prices are samples (shows “Sample price · not final”)</span></label>
+            {orderCount > 0 && <Notice kind="info">Price changes apply to new orders only. The {orderCount} existing order(s) keep the amount that was charged.</Notice>}
             <div className="form-row">
-              <Field label="Access duration (calendar months)" type="number" min={1} max={36} value={draft.accessMonths} error={errors.months}
-                hint={enrolledCount ? 'Changes apply to new enrollments only. Existing access dates are not changed.' : 'Applies from the date enrollment is confirmed.'}
+              <Field label="Access for new enrollments (calendar months)" type="number" min={1} max={36} value={draft.accessMonths} error={errors.months}
+                hint={enrolledCount ? `Existing enrollments keep their own dates (${enrolledCount} record${enrolledCount === 1 ? '' : 's'}). Use Students → Extend for individual changes.` : 'Counted from the moment enrollment is confirmed.'}
                 onChange={(e) => set('accessMonths', Number(e.target.value))} />
               <div className="field">
                 <label htmlFor="ce-status">Status</label>
-                <select id="ce-status" className="select" value={draft.status} aria-invalid={!!errors.status} aria-describedby={errors.status ? 'ce-status-err' : undefined} onChange={(e) => set('status', e.target.value as Course['status'])}>
+                <select id="ce-status" className="select" value={draft.status} aria-invalid={!!errors.status} aria-describedby={errors.status ? 'ce-status-err' : 'ce-status-hint'} onChange={(e) => set('status', e.target.value as Course['status'])}>
                   <option value="draft">Draft — hidden from the website</option>
                   <option value="published">Published — visible and open for enrollment</option>
+                  <option value="archived">Archived — hidden and closed; enrolled students keep access</option>
                 </select>
-                {errors.status && <span id="ce-status-err" className="error"><Icon name="alert" size={15} />{errors.status}</span>}
+                {errors.status ? <span id="ce-status-err" className="error"><Icon name="alert" size={15} />{errors.status}</span>
+                  : <span id="ce-status-hint" className="hint">{activeCount ? `${activeCount} student(s) have active access. Unpublishing or archiving does not remove their access.` : 'Publishing makes the course visible and purchasable.'}</span>}
               </div>
             </div>
           </div>
@@ -228,10 +294,11 @@ export function AdminCourseEditor() {
               <h2 id="ce-curr" style={{ fontSize: '1.25rem', margin: 0 }}>Modules &amp; lessons</h2>
               <p className="muted small" style={{ margin: 0 }}>{draft.modules.length} modules · {courseLessons(draft, true).length} lessons · {courseMinutes(draft)} published minutes</p>
             </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModules([...draft.modules, { id: newId('m'), title: `New module ${draft.modules.length + 1}`, lessons: [] }])}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModules([...draft.modules, { id: newId(), title: `New module ${draft.modules.length + 1}`, lessons: [] }])}>
               <Icon name="plus" size={16} /> Add module
             </button>
           </div>
+          {errors.modules && <Notice kind="err">{errors.modules}</Notice>}
           {draft.modules.length === 0 && <div className="empty"><p className="muted" style={{ margin: 0 }}>No modules yet. Add a module, then add lessons to it.</p></div>}
           {draft.modules.map((m, mi) => (
             <div className="editor-module" key={m.id}>
@@ -242,7 +309,7 @@ export function AdminCourseEditor() {
                   <button type="button" className="icon-btn icon-btn-sm" disabled={mi === 0} aria-label={`Move module “${m.title}” up`} onClick={() => setModules(move(draft.modules, mi, -1))}><Icon name="arrowUp" size={16} /></button>
                   <button type="button" className="icon-btn icon-btn-sm" disabled={mi === draft.modules.length - 1} aria-label={`Move module “${m.title}” down`} onClick={() => setModules(move(draft.modules, mi, 1))}><Icon name="arrowDown" size={16} /></button>
                 </span>
-                <button type="button" className="icon-btn icon-btn-sm" aria-label={`Delete module “${m.title}”`} onClick={() => setConfirmDel({ kind: 'module', id: m.id })}><Icon name="trash" size={16} /></button>
+                <button type="button" className="icon-btn icon-btn-sm icon-btn-danger" aria-label={`Delete module “${m.title}”`} onClick={() => setConfirmDel({ kind: 'module', id: m.id })}><Icon name="trash" size={16} /></button>
               </div>
               {m.lessons.map((l, li) => (
                 <div className="editor-lesson" key={l.id}>
@@ -256,15 +323,17 @@ export function AdminCourseEditor() {
                       <span className="muted small">{l.durationMin} min</span>
                       {l.published ? <span className="badge badge-ok">Published</span> : <span className="badge badge-muted">Unpublished</span>}
                       {l.preview && <span className="badge badge-sage">Free preview</span>}
-                      {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {l.video.kind === 'url' ? 'Hosted video' : 'Demo upload'}</span> : <span className="badge badge-warn">No video yet</span>}
+                      {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {l.video.kind === 'upload' ? 'Demo upload' : l.video.kind === 'storage' ? 'Protected video' : 'Video link'}</span> : <span className="badge badge-warn">No video yet</span>}
+                      {l.captionsUrl && <span className="badge badge-muted">Captions</span>}
+                      {l.transcript && <span className="badge badge-muted">Transcript</span>}
                     </span>
                   </div>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing({ moduleId: m.id, lesson: l, isNew: false })}><Icon name="edit" size={15} /> Edit<span className="sr-only"> {l.title}</span></button>
-                  <button type="button" className="icon-btn icon-btn-sm" aria-label={`Delete lesson “${l.title}”`} onClick={() => setConfirmDel({ kind: 'lesson', moduleId: m.id, id: l.id })}><Icon name="trash" size={16} /></button>
+                  <button type="button" className="icon-btn icon-btn-sm icon-btn-danger" aria-label={`Delete lesson “${l.title}”`} onClick={() => setConfirmDel({ kind: 'lesson', moduleId: m.id, id: l.id })}><Icon name="trash" size={16} /></button>
                 </div>
               ))}
               <div style={{ padding: '10px 14px' }}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ moduleId: m.id, isNew: true, lesson: { id: newId('l'), title: '', description: '', durationMin: 15, preview: false, published: false } })}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ moduleId: m.id, isNew: true, lesson: { id: newId(), title: '', description: '', durationMin: 15, preview: false, published: false } })}>
                   <Icon name="plus" size={16} /> Add lesson
                 </button>
               </div>
@@ -272,19 +341,20 @@ export function AdminCourseEditor() {
           ))}
         </section>
 
-        <section className="card" aria-labelledby="ce-danger" style={{ borderColor: '#ecbcb7' }}>
-          <h2 id="ce-danger" style={{ fontSize: '1.25rem' }}>Delete course</h2>
-          {enrolledCount > 0 ? (
-            <p className="muted" style={{ margin: 0 }}>This course has {enrolledCount} enrollment record(s), so it can’t be deleted. Set it to Draft to hide it from the website instead.</p>
+        <section className="card danger-zone" aria-labelledby="ce-danger">
+          <h2 id="ce-danger" style={{ fontSize: '1.25rem' }}>Remove this course</h2>
+          {enrolledCount > 0 || orderCount > 0 ? (
+            <p className="muted" style={{ margin: 0 }}>This course has {orderCount} order(s) and {enrolledCount} enrollment record(s), so it can’t be deleted — that would damage purchase history. Set its status to <strong>Archived</strong> to hide it and close enrollment; enrolled students keep their access.</p>
           ) : (
-            <div className="row-between"><p className="muted" style={{ margin: 0 }}>Permanently remove this course and its lessons.</p><button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmDel({ kind: 'course' })}>Delete course</button></div>
+            <div className="row-between"><p className="muted" style={{ margin: 0 }}>Permanently delete this unused course and its lessons.</p><button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmDel({ kind: 'course' })}>Delete course…</button></div>
           )}
         </section>
       </div>
 
       {editing && (
         <LessonDialog
-          key={editing.lesson.id} lesson={editing.lesson} isNew={editing.isNew}
+          key={editing.lesson.id} lesson={editing.lesson} isNew={editing.isNew} coursePublished={original.status === 'published'}
+          completions={completionsFor(editing.lesson.id)} activeStudents={activeCount}
           onCancel={() => setEditing(null)}
           onSave={(l) => {
             updateModule(editing.moduleId, (m) => ({ ...m, lessons: editing.isNew ? [...m.lessons, l] : m.lessons.map((x) => (x.id === l.id ? l : x)) }));
@@ -299,8 +369,10 @@ export function AdminCourseEditor() {
         title={confirmDel?.kind === 'course' ? 'Delete this course?' : confirmDel?.kind === 'module' ? 'Delete this module?' : 'Delete this lesson?'}
         confirmLabel="Delete"
         message={confirmDel?.kind === 'course' ? 'This permanently removes the course and all of its lessons. This cannot be undone.'
-          : confirmDel?.kind === 'module' ? 'The module and all lessons inside it will be removed when you save the course. Students lose access to those lessons.'
-            : 'The lesson will be removed when you save the course. Completion records for it will no longer count towards progress.'}
+          : confirmDel?.kind === 'module'
+            ? (delModuleCompletions ? <>Students have completed lessons in this module ({delModuleCompletions} completion record(s)), so saving will be refused. <strong>Unpublish the lessons instead.</strong></> : 'The module and all lessons inside it will be removed when you save the course.')
+            : delLessonCompletions ? <>{delLessonCompletions} student(s) have completed this lesson, so saving will be refused. <strong>Unpublish it instead</strong> — their progress is kept.</>
+              : delLesson?.video && delLesson.published ? 'This published lesson has a video that students can currently watch. It will be removed when you save the course.' : 'The lesson will be removed when you save the course.'}
       />
 
       <ConfirmDialog
@@ -312,60 +384,67 @@ export function AdminCourseEditor() {
   );
 }
 
-function LessonDialog({ lesson, isNew, onSave, onCancel }: { lesson: Lesson; isNew: boolean; onSave: (l: Lesson) => void; onCancel: () => void }) {
+function LessonDialog({ lesson, isNew, coursePublished, completions, activeStudents, onSave, onCancel }: {
+  lesson: Lesson; isNew: boolean; coursePublished: boolean; completions: number; activeStudents: number;
+  onSave: (l: Lesson) => void; onCancel: () => void;
+}) {
+  const { uploadVideo } = useStore();
   const [l, setL] = useState<Lesson>(lesson);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [videoUrl, setVideoUrl] = useState(lesson.video?.kind === 'url' ? lesson.video.src : '');
   const [upload, setUpload] = useState<{ name: string; pct: number } | null>(null);
   const [uploadError, setUploadError] = useState('');
-  const timer = useRef<number>();
-  useEffect(() => () => window.clearInterval(timer.current), []);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState<null | (() => void)>(null);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
+  const live = coursePublished && lesson.published && !!lesson.video;
+  const hostingReady = IS_DEMO || !!PRODUCTION_CONFIG?.videoHostingEnabled;
+
+  // Replacing or removing a video students are using needs a confirmation first.
+  const guard = (fn: () => void) => (live && l.video ? setConfirmReplace(() => fn) : fn());
 
   const attachUrl = () => {
     const v = videoUrl.trim();
     if (!/^https:\/\/[^\s]+$/.test(v)) { setErrors({ ...errors, video: 'Enter a full https:// link from your video host.' }); return; }
     setErrors({ ...errors, video: '' });
-    setL({ ...l, video: { kind: 'url', src: v, attachedAt: new Date().toISOString() } });
+    guard(() => setL((cur) => ({ ...cur, video: { kind: 'url', src: v, attachedAt: new Date().toISOString() } })));
+  };
+
+  const startUpload = async (f: File) => {
+    setUploadError('');
+    setLastFile(f);
+    abort.current?.abort();
+    const ctrl = new AbortController();
+    abort.current = ctrl;
+    setUpload({ name: f.name, pct: 0 });
+    const r = await uploadVideo(l.id, f, (pct) => setUpload({ name: f.name, pct }), ctrl.signal);
+    setUpload(null);
+    if (!r.ok) { setUploadError(r.error); return; }
+    setLastFile(null);
+    setL((cur) => ({ ...cur, video: r.data }));
   };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (!f) return;
-    setUploadError('');
-    if (!f.type.startsWith('video/')) { setUploadError(`“${f.name}” is not a video file. Please choose an MP4, MOV or WebM file.`); return; }
-    if (f.size > 4 * 1024 ** 3) { setUploadError('This file is larger than 4 GB. Please export a smaller version.'); return; }
-    // Simulated upload progress. Production: direct upload to the video host with real progress events.
-    let pct = 0;
-    setUpload({ name: f.name, pct });
-    window.clearInterval(timer.current);
-    timer.current = window.setInterval(() => {
-      pct = Math.min(100, pct + 4 + Math.random() * 10);
-      setUpload({ name: f.name, pct });
-      if (pct >= 100) {
-        window.clearInterval(timer.current);
-        sessionUploads.set(l.id, URL.createObjectURL(f));
-        setL((cur) => ({ ...cur, video: { kind: 'upload', src: 'session', fileName: f.name, attachedAt: new Date().toISOString() } }));
-        setTimeout(() => setUpload(null), 600);
-      }
-    }, 180);
+    if (f) guard(() => void startUpload(f));
   };
-
-  const cancelUpload = () => { window.clearInterval(timer.current); setUpload(null); setUploadError('Upload cancelled.'); };
 
   const save = () => {
     const er: Record<string, string> = {};
     if (!l.title.trim()) er.title = 'Please enter a lesson title.';
-    if (!(l.durationMin >= 1 && l.durationMin <= 180)) er.duration = 'Enter a duration between 1 and 180 minutes.';
-    if (upload) er.video = 'Please wait for the upload to finish.';
+    if (!(Number.isInteger(l.durationMin) && l.durationMin >= 1 && l.durationMin <= 180)) er.duration = 'Enter a whole number of minutes between 1 and 180.';
+    if (l.captionsUrl && !/^https:\/\/\S+\.vtt(\?|$)/i.test(l.captionsUrl)) er.captions = 'Use an https:// link to a WebVTT (.vtt) captions file.';
+    if (upload) er.video = 'Please wait for the upload to finish, or cancel it.';
     setErrors(er);
     if (Object.keys(er).length) return;
-    onSave({ ...l, title: l.title.trim() });
+    onSave({ ...l, title: l.title.trim(), captionsUrl: l.captionsUrl?.trim() || undefined, transcript: l.transcript?.trim() || undefined });
   };
 
   return (
     <Dialog open onClose={onCancel} size="lg" title={isNew ? 'Add lesson' : 'Edit lesson'}
-      footer={<><button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button><button type="button" className="btn btn-primary" onClick={save}>{isNew ? 'Add lesson' : 'Apply changes'}</button></>}>
+      footer={<><button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button><button type="button" className="btn btn-primary" onClick={save} disabled={!!upload}>{isNew ? 'Add lesson' : 'Apply changes'}</button></>}>
       <div className="form">
         <Field label="Lesson title" required value={l.title} error={errors.title} onChange={(e) => setL({ ...l, title: e.target.value })} />
         <TextArea label="Description" value={l.description} onChange={(e) => setL({ ...l, description: e.target.value })} style={{ minHeight: 90 }} />
@@ -375,50 +454,73 @@ function LessonDialog({ lesson, isNew, onSave, onCancel }: { lesson: Lesson; isN
             <span className="label">Visibility</span>
             <label className="check"><input type="checkbox" checked={l.published} onChange={(e) => setL({ ...l, published: e.target.checked })} /><span>Published (visible to enrolled students)</span></label>
             <label className="check"><input type="checkbox" checked={l.preview} onChange={(e) => setL({ ...l, preview: e.target.checked })} /><span>Free preview (anyone can watch)</span></label>
+            {!l.published && completions > 0 && <span className="hint">{completions} student(s) completed this lesson. Unpublishing keeps their record but removes it from progress totals.</span>}
           </div>
         </div>
 
-        <fieldset style={{ border: '1px solid var(--line)', borderRadius: 'var(--r)', padding: 16, margin: 0 }}>
-          <legend style={{ fontWeight: 600, padding: '0 6px' }}>Video</legend>
+        <fieldset className="fieldset">
+          <legend>Video</legend>
           {l.video ? (
             <div className="notice notice-ok" style={{ marginBottom: 14 }}>
               <Icon name="video" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <strong>{l.video.kind === 'url' ? 'Hosted video attached' : `Demo upload: ${l.video.fileName}`}</strong>
-                <div className="small" style={{ wordBreak: 'break-all' }}>{l.video.kind === 'url' ? l.video.src : 'Plays only in this browser session (demo).'}</div>
+                <strong>{l.video.kind === 'url' ? 'Video link attached' : l.video.kind === 'storage' ? `Protected video: ${l.video.fileName ?? 'uploaded file'}` : `Demo upload: ${l.video.fileName}`}</strong>
+                <div className="small" style={{ wordBreak: 'break-all' }}>{l.video.kind === 'url' ? l.video.src : l.video.kind === 'storage' ? 'Stored privately; students get a short-lived link only while their access is active.' : 'Simulated: plays only in this browser session.'}</div>
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setL({ ...l, video: undefined }); sessionUploads.delete(l.id); }}>Remove</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => guard(() => { setL((cur) => ({ ...cur, video: undefined })); sessionUploads.delete(l.id); })}>Remove</button>
             </div>
           ) : <p className="muted small" style={{ marginTop: 0 }}>No video attached yet. Students will see a “video coming soon” placeholder.</p>}
-
-          <div className="form-row" style={{ alignItems: 'end' }}>
-            <Field label={l.video ? 'Replace with a hosted video link' : 'Hosted video link'} type="url" placeholder="https://…" value={videoUrl} error={errors.video}
-              hint="An MP4 link or an embeddable player URL from your video host." onChange={(e) => setVideoUrl(e.target.value)} />
-            <div><button type="button" className="btn btn-secondary" onClick={attachUrl}>Attach link</button></div>
-          </div>
+          {live && <Notice kind="warn">This lesson is published{activeStudents ? ` and ${activeStudents} student(s) have active access` : ''}. Replacing or removing its video takes effect for students when you save the course.</Notice>}
 
           <div style={{ marginTop: 14 }}>
-            <span className="label" style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Or upload a file <span className="badge badge-info">Simulated</span></span>
+            <span className="label" style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
+              Upload a video file {IS_DEMO ? <span className="badge badge-info">Simulated</span> : hostingReady ? <span className="badge badge-ok">Protected storage</span> : <span className="badge badge-muted">Not configured</span>}
+            </span>
             {upload ? (
               <div className="stack" aria-live="polite">
                 <div className="row-between small"><span>Uploading {upload.name}…</span><span>{Math.round(upload.pct)}%</span></div>
                 <div className="upload-bar" role="progressbar" aria-valuenow={Math.round(upload.pct)} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress"><span style={{ width: `${upload.pct}%` }} /></div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={cancelUpload}>Cancel upload</button>
+                <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => abort.current?.abort()}>Cancel upload</button></div>
               </div>
-            ) : (
+            ) : hostingReady ? (
               <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
                 <Icon name="upload" size={16} /> {l.video ? 'Replace with a file' : 'Choose video file'}
-                <input type="file" accept="video/*" className="sr-only" onChange={onFile} />
+                <input type="file" accept="video/mp4,video/webm,video/quicktime" className="sr-only" onChange={onFile} />
               </label>
+            ) : (
+              <p className="muted small" style={{ margin: 0 }}>Uploads are switched off until protected video storage is configured (see SETUP-PRODUCTION.md → Video).</p>
             )}
-            {uploadError && <p className="error" role="alert" style={{ color: 'var(--err)', fontSize: '0.85rem', marginTop: 8 }}>{uploadError}</p>}
-            <p className="muted small" style={{ marginBottom: 0, marginTop: 8 }}>
-              Production: files upload directly to the configured video host, and paid lessons use protected playback (signed, expiring links). This reduces casual sharing but cannot fully prevent screen recording.
-            </p>
+            {uploadError && (
+              <div className="row" role="alert" style={{ marginTop: 8 }}>
+                <span className="error">{uploadError}</span>
+                {lastFile && uploadError !== 'Upload cancelled.' && <button type="button" className="btn btn-secondary btn-sm" onClick={() => void startUpload(lastFile)}><Icon name="refresh" size={14} /> Retry</button>}
+              </div>
+            )}
           </div>
+
+          <details style={{ marginTop: 14 }}>
+            <summary className="small" style={{ cursor: 'pointer' }}>Or attach a hosted video link</summary>
+            <div className="form-row" style={{ alignItems: 'end', marginTop: 10 }}>
+              <Field label="Video link" type="url" placeholder="https://…" value={videoUrl} error={errors.video}
+                hint="An MP4 link or an embeddable player URL. Links are not access-protected — use them for previews or testing only." onChange={(e) => setVideoUrl(e.target.value)} />
+              <div><button type="button" className="btn btn-secondary" onClick={attachUrl}>Attach link</button></div>
+            </div>
+          </details>
+          <p className="muted small" style={{ marginBottom: 0, marginTop: 12 }}>
+            Protected playback makes casual sharing harder, but no video platform can fully prevent screen recording.
+          </p>
+        </fieldset>
+
+        <fieldset className="fieldset">
+          <legend>Accessibility</legend>
+          <Field label="Captions file (WebVTT link, optional)" type="url" placeholder="https://…/lesson.vtt" value={l.captionsUrl ?? ''} error={errors.captions} onChange={(e) => setL({ ...l, captionsUrl: e.target.value })} />
+          <TextArea label="Transcript (optional)" hint="Shown under the video for students with access. Separate paragraphs with a blank line." value={l.transcript ?? ''} style={{ minHeight: 100 }} onChange={(e) => setL({ ...l, transcript: e.target.value })} />
         </fieldset>
         {!isNew && <Notice kind="info">Changes apply to the course draft. Select “Save course” afterwards to publish them.</Notice>}
       </div>
+      <ConfirmDialog open={!!confirmReplace} danger title="Change a video students are using?" confirmLabel="Yes, change it"
+        message="Students with access are currently able to watch this video. The change takes effect when you save the course."
+        onCancel={() => setConfirmReplace(null)} onConfirm={() => { const fn = confirmReplace; setConfirmReplace(null); fn?.(); }} />
     </Dialog>
   );
 }

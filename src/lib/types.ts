@@ -1,13 +1,16 @@
 export type Role = 'student' | 'admin';
-export type Currency = 'INR' | 'USD';
-export type RecordSource = 'sample' | 'demo';
+/** Currencies the site can display. Which ones are offered is a setting (`displayCurrencies`). */
+export const CURRENCIES = ['INR', 'USD', 'CAD'] as const;
+export type Currency = (typeof CURRENCIES)[number];
+/** 'sample' = fictional seed record; 'demo' = created by someone using the demo; 'live' = real production record. */
+export type RecordSource = 'sample' | 'demo' | 'live';
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  /** Demo-only hash. Production uses a real auth provider (never store passwords client-side). */
-  passwordHash: string;
+  /** Demo only: a non-cryptographic hash. Production never sees passwords — the auth provider owns them. */
+  passwordHash?: string;
   role: Role;
   country?: string;
   createdAt: string;
@@ -15,8 +18,13 @@ export interface User {
 }
 
 export interface LessonVideo {
-  kind: 'url' | 'upload';
-  /** For 'url': a hosted video URL. For 'upload': a demo marker; the file only plays in the session it was chosen. */
+  /**
+   * 'url'     — a hosted video link (demo, or a public host while testing)
+   * 'upload'  — demo only: a file kept in memory for the browser session it was chosen in
+   * 'storage' — production: an object in the private `lesson-videos` bucket; playback needs a
+   *             short-lived signed URL from the `lesson-playback` function
+   */
+  kind: 'url' | 'upload' | 'storage';
   src: string;
   fileName?: string;
   attachedAt: string;
@@ -30,6 +38,10 @@ export interface Lesson {
   preview: boolean;
   published: boolean;
   video?: LessonVideo;
+  /** Optional WebVTT captions link. */
+  captionsUrl?: string;
+  /** Optional plain-text transcript shown under the player. */
+  transcript?: string;
 }
 
 export interface Module {
@@ -39,6 +51,11 @@ export interface Module {
 }
 
 export type ArtTone = 'sage' | 'rose' | 'sand';
+/** Archived = hidden and closed to new enrollments, but existing students keep their access and history. */
+export type CourseStatus = 'draft' | 'published' | 'archived';
+
+/** Prices are integers in the currency's minor unit (paise, cents). */
+export type Prices = Partial<Record<Currency, number>>;
 
 export interface Course {
   id: string;
@@ -46,19 +63,21 @@ export interface Course {
   title: string;
   /** True until Rekha confirms the course name. */
   titleProvisional: boolean;
+  /** Short description used on cards and the course hero. */
   tagline: string;
+  /** Longer overview on the course page. */
   description: string;
   audience: string[];
   topics: string[];
   art: ArtTone;
-  /** Optional uploaded cover image (data URL in the demo). */
   image?: string;
-  prices: Record<Currency, number>;
+  imageAlt: string;
+  prices: Prices;
   /** True while prices are placeholders awaiting client confirmation. */
   pricesSample: boolean;
-  status: 'draft' | 'published';
+  status: CourseStatus;
+  /** Access length for FUTURE enrollments. Existing enrollments keep their own dates. */
   accessMonths: number;
-  /** True while the curriculum is illustrative rather than Rekha's final outline. */
   curriculumSample: boolean;
   modules: Module[];
   updatedAt: string;
@@ -67,24 +86,30 @@ export interface Course {
 export interface EnrollmentEvent {
   at: string;
   action: string;
-  note?: string;
+  /** Who made the change (admin email, "system", or "student"). */
+  by?: string;
+  reason?: string;
 }
 
 export interface Enrollment {
   id: string;
   userId: string;
   courseId: string;
+  /** Set for purchases. Complimentary access has no order — it is recorded with a reason instead. */
   orderId?: string;
   startAt: string;
   expiresAt: string;
   revoked: boolean;
   source: 'purchase' | 'admin-grant';
+  /** Required for admin grants. */
+  grantReason?: string;
   recordSource: RecordSource;
   history: EnrollmentEvent[];
 }
 
 export interface CourseProgress {
-  completed: string[];
+  /** Lesson id → completion time. One record per lesson, so duplicates are impossible. */
+  completed: Record<string, string>;
   lastLessonId?: string;
   updatedAt: string;
 }
@@ -98,13 +123,28 @@ export interface Order {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  /** Minor units, calculated from the course price when the order was created. */
   amount: number;
   currency: Currency;
   status: OrderStatus;
-  provider: 'simulated';
+  provider: 'simulated' | 'razorpay' | 'stripe';
   reference: string;
+  providerPaymentId?: string;
   createdAt: string;
   updatedAt: string;
+  recordSource: RecordSource;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  actorId: string;
+  actorEmail: string;
+  action: string;
+  entity: 'course' | 'lesson' | 'enrollment' | 'settings' | 'order' | 'user' | 'demo';
+  entityId?: string;
+  summary: string;
+  reason?: string;
   recordSource: RecordSource;
 }
 
@@ -129,7 +169,9 @@ export interface FaqItem {
   category: string;
   question: string;
   answer: string;
-  /** Draft = depends on an unconfirmed policy. */
+  /** Shown on the website. Unpublished questions stay in the admin only. */
+  published: boolean;
+  /** Depends on an unconfirmed policy — shows a "Draft" label. */
   draft: boolean;
 }
 
@@ -138,6 +180,9 @@ export interface PolicyDoc {
   body: string;
   draft: boolean;
 }
+
+export type PageKey = 'home' | 'courses' | 'about' | 'faq' | 'contact';
+export interface SeoEntry { title: string; description: string }
 
 export interface Settings {
   brandName: string;
@@ -148,16 +193,39 @@ export interface Settings {
   fullNameConfirmed: boolean;
   credentials: string;
   credentialsConfirmed: boolean;
+
+  logo?: string;
+  logoAlt: string;
+  portrait?: string;
+  portraitAlt: string;
+
+  heroEyebrow: string;
+  heroHeadline: string;
+  /** Word(s) in the headline drawn with the gradient accent. Must appear in the headline. */
+  heroAccent: string;
+  heroText: string;
+  heroPrimaryCta: string;
+  heroSecondaryCta: string;
+
   aboutIntro: string;
   personalStory: string;
-  portrait?: string;
+
   supportEmail: string;
   instagramUrl: string;
   instagramHandle: string;
   whatsappNumber: string;
   whatsappVerified: boolean;
+
+  footerTagline: string;
+  footerNote: string;
+
+  defaultCurrency: Currency;
+  displayCurrencies: Currency[];
+  defaultAccessMonths: number;
   accessStartRule: 'enrollment' | 'launch-date';
   launchDate: string;
+
+  seo: Record<PageKey, SeoEntry>;
   faqs: FaqItem[];
   policies: Record<'privacy' | 'terms' | 'refund', PolicyDoc>;
 }
@@ -168,7 +236,12 @@ export interface ResetToken {
   expiresAt: string;
 }
 
-export interface DemoState {
+export interface Session {
+  userId: string;
+  expiresAt: string;
+}
+
+export interface AppState {
   version: number;
   users: User[];
   courses: Course[];
@@ -177,10 +250,20 @@ export interface DemoState {
   progress: Record<string, CourseProgress>;
   orders: Order[];
   activity: Activity[];
+  audit: AuditEntry[];
   messages: ContactMessage[];
+  /** What the public website shows. */
   settings: Settings;
-  sessionUserId: string | null;
+  /** Saved-but-unpublished settings edits (admin preview). Null when nothing is pending. */
+  settingsDraft: Settings | null;
+  settingsPublishedAt?: string;
+  session: Session | null;
   resetTokens: ResetToken[];
+  /** Demo login throttle: email → failed attempt timestamps. */
+  loginFailures: Record<string, number[]>;
 }
+
+/** @deprecated kept for readability in older notes — use AppState. */
+export type DemoState = AppState;
 
 export type AccessStatus = 'none' | 'active' | 'expired' | 'revoked' | 'scheduled';

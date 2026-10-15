@@ -1,44 +1,48 @@
 import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ArtTone, Course, Currency } from '../lib/types';
+import { CURRENCY_LABEL, formatMoney, isCurrency } from '../lib/money';
 import { useStore } from '../lib/store';
 import { asset } from '../lib/uploads';
 
 /* ---------- Currency preference (per-viewer convenience) ---------- */
 
-const CurrencyCtx = createContext<{ currency: Currency; setCurrency: (c: Currency) => void }>({ currency: 'INR', setCurrency: () => {} });
+const CurrencyCtx = createContext<{ currency: Currency; setCurrency: (c: Currency) => void; offered: Currency[] }>({ currency: 'INR', setCurrency: () => {}, offered: ['INR'] });
 
-function initialCurrency(): Currency {
+function guessCurrency(offered: Currency[], fallback: Currency): Currency {
   try {
     const saved = localStorage.getItem('ywr-currency');
-    if (saved === 'INR' || saved === 'USD') return saved;
+    if (isCurrency(saved) && offered.includes(saved)) return saved;
   } catch { /* ignore */ }
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-  return tz.startsWith('America/') ? 'USD' : 'INR';
+  const canada = /^America\/(Toronto|Vancouver|Edmonton|Winnipeg|Halifax|St_Johns|Regina|Montreal)/.test(tz);
+  if (canada && offered.includes('CAD')) return 'CAD';
+  if (tz.startsWith('America/') && offered.includes('USD')) return 'USD';
+  return offered.includes(fallback) ? fallback : offered[0] ?? 'INR';
 }
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [currency, set] = useState<Currency>(initialCurrency);
+  const { site } = useStore();
+  const offered = site.displayCurrencies.length ? site.displayCurrencies : [site.defaultCurrency];
+  const [chosen, set] = useState<Currency>(() => guessCurrency(offered, site.defaultCurrency));
+  const currency = offered.includes(chosen) ? chosen : (offered.includes(site.defaultCurrency) ? site.defaultCurrency : offered[0]);
   const setCurrency = (c: Currency) => {
     set(c);
     try { localStorage.setItem('ywr-currency', c); } catch { /* ignore */ }
   };
-  return <CurrencyCtx.Provider value={{ currency, setCurrency }}>{children}</CurrencyCtx.Provider>;
+  return <CurrencyCtx.Provider value={{ currency, setCurrency, offered }}>{children}</CurrencyCtx.Provider>;
 }
 export const useCurrency = () => useContext(CurrencyCtx);
 
-export function formatMoney(amount: number, currency: Currency) {
-  return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
-    style: 'currency', currency, maximumFractionDigits: currency === 'INR' ? 0 : 2, minimumFractionDigits: 0,
-  }).format(amount);
-}
+export { formatMoney };
 
 export function CurrencyToggle() {
-  const { currency, setCurrency } = useCurrency();
+  const { currency, setCurrency, offered } = useCurrency();
+  if (offered.length < 2) return null;
   return (
     <div className="currency-toggle" role="group" aria-label="Display prices in">
-      {(['INR', 'USD'] as Currency[]).map((c) => (
+      {offered.map((c) => (
         <button key={c} type="button" aria-pressed={currency === c} onClick={() => setCurrency(c)}>
-          {c === 'INR' ? '₹ INR' : '$ USD'}
+          {CURRENCY_LABEL[c]}
         </button>
       ))}
     </div>
@@ -47,9 +51,10 @@ export function CurrencyToggle() {
 
 export function Price({ course, size }: { course: Course; size?: 'lg' }) {
   const { currency } = useCurrency();
+  const amount = course.prices[currency];
   return (
     <div className="price" style={size === 'lg' ? { fontSize: '2rem' } : undefined}>
-      {formatMoney(course.prices[currency], currency)}
+      {amount !== undefined ? formatMoney(amount, currency) : <span style={{ fontSize: '1rem' }}>Price in {currency} coming soon</span>}
       <small>{course.pricesSample ? 'Sample price · not final' : 'One-time payment'}</small>
     </div>
   );
@@ -124,15 +129,15 @@ interface PortraitProps {
 }
 
 export function Portrait({ small, src: override, clip, pose = 'butterfly', rise }: PortraitProps) {
-  const { state } = useStore();
-  const uploaded = override !== undefined ? override : state.settings.portrait;
-  const name = state.settings.displayName;
+  const { site } = useStore();
+  const uploaded = override !== undefined ? override : site.portrait;
+  const name = site.displayName;
 
   if (uploaded) {
     return (
       <div className={`portrait ${small ? 'portrait-sm' : ''}`} {...(clip ? { 'data-clip': '' } : {})}>
         <div className="portrait-inner" {...(small ? {} : { 'data-parallax': '10' })}>
-          <img src={uploaded} alt={`Portrait of ${name}`} />
+          <img src={uploaded} alt={site.portraitAlt || `Portrait of ${name}`} />
         </div>
       </div>
     );
@@ -173,12 +178,12 @@ const tones: Record<ArtTone, { bg: string; a: string; b: string; c: string; line
   sand: { bg: '#efe3cc', a: '#e5d3b0', b: '#d3bd92', c: '#e1e8dc', line: '#765f3c' },
 };
 
-export function CourseArt({ course, label = true }: { course: Pick<Course, 'art' | 'image' | 'title'>; label?: boolean }) {
+export function CourseArt({ course, label = true }: { course: Pick<Course, 'art' | 'image' | 'title'> & { imageAlt?: string }; label?: boolean }) {
   const t = tones[course.art];
   if (course.image) {
     return (
       <div className="course-art">
-        <img src={asset(course.image)} alt="" loading="lazy" />
+        <img src={asset(course.image)} alt={course.imageAlt ?? ''} loading="lazy" />
       </div>
     );
   }
@@ -205,6 +210,9 @@ export function CourseArt({ course, label = true }: { course: Pick<Course, 'art'
 }
 
 export function Logo() {
+  const { site } = useStore();
+  // An uploaded logo replaces the drawn mark. Its alt text is empty when the brand name is shown beside it.
+  if (site.logo) return <img src={site.logo} alt="" width={40} height={40} style={{ borderRadius: '50%', objectFit: 'cover' }} />;
   return (
     <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true">
       <circle cx="32" cy="32" r="31" fill="#fdfbf7" stroke="#ddd3c2" />

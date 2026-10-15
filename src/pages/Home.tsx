@@ -10,11 +10,17 @@ import { ScrollTrigger, getLenis, gsap, prefersReducedMotion } from '../lib/moti
 
 const words = ['Breathe', 'Soften', 'Release', 'Make time for yourself', 'Practise at your pace', 'Return to stillness'];
 
+/** Headline with the configured accent words drawn in the gradient. */
+export function AccentHeadline({ text, accent }: { text: string; accent: string }) {
+  const i = accent ? text.indexOf(accent) : -1;
+  if (i < 0) return <>{text}</>;
+  return <>{text.slice(0, i)}<em>{accent}</em>{text.slice(i + accent.length)}</>;
+}
+
 export default function Home() {
-  const { state } = useStore();
+  const { site: s } = useStore();
   const courses = usePublishedCourses();
-  const s = state.settings;
-  usePageTitle('', 'Explore guided, prerecorded face yoga lessons with Rekha. Learn at your own pace with six months of course access.');
+  usePageTitle(s.seo.home.title, s.seo.home.description);
   const hero = useRef<HTMLElement>(null);
 
   // Hero exit: copy lifts and fades, portrait sinks and shrinks, chips drift at different depths.
@@ -58,12 +64,12 @@ export default function Home() {
         </div>
         <div className="wrap hero-grid">
           <div className="hero-copy">
-            <span className="eyebrow" data-reveal>{s.brandName} · Prerecorded face yoga</span>
-            <h1 data-split>Make time for yourself. Discover the <em>{s.courseBrand}</em>.</h1>
-            <p className="lead" data-reveal>Explore guided face yoga lessons with {s.displayName}, learn at your own pace, and build a practice that fits your day.</p>
-            <div className="row" data-reveal data-reveal-delay="0.1">
-              <Link to="/courses" className="btn btn-primary">Explore the Courses <Icon name="arrowRight" size={17} /></Link>
-              <Link to="/about" className="btn btn-secondary">Meet {s.displayName}</Link>
+            <span className="eyebrow" data-reveal>{s.heroEyebrow}</span>
+            <h1 data-split><AccentHeadline text={s.heroHeadline} accent={s.heroAccent} /></h1>
+            <p className="lead" data-reveal>{s.heroText}</p>
+            <div className="row hero-actions" data-reveal data-reveal-delay="0.1">
+              <Link to="/courses" className="btn btn-primary">{s.heroPrimaryCta} <Icon name="arrowRight" size={17} /></Link>
+              {s.heroSecondaryCta && <Link to="/about" className="link-arrow">{s.heroSecondaryCta} <Icon name="arrowRight" size={16} /></Link>}
             </div>
             <div className="hero-meta" data-reveal data-reveal-delay="0.2">
               <span><Icon name="video" size={17} />Prerecorded video lessons</span>
@@ -167,7 +173,7 @@ export default function Home() {
             
             <span className="eyebrow" style={{ display: 'flex', marginTop: 12 }}>Meet your teacher</span>
             <p className="about-quote" data-reveal>{s.aboutIntro}</p>
-            {s.credentialsConfirmed && <p className="muted" data-reveal>{s.credentials}</p>}
+            {s.credentialsConfirmed && s.credentials.trim() && <p className="muted" data-reveal>{s.credentials}</p>}
             <div className="row" style={{ marginTop: 12 }} data-reveal>
               <Link to="/about" className="btn btn-light">Read Rekha’s story <Icon name="arrowRight" size={16} /></Link>
               <a href={s.instagramUrl} target="_blank" rel="noopener noreferrer" className="btn btn-outline-light"><Icon name="instagram" size={18} /> {s.instagramHandle}<span className="sr-only">(opens in a new tab)</span></a>
@@ -190,7 +196,7 @@ export default function Home() {
             <p className="muted" data-reveal>Enrolling, lesson access, devices and support.</p>
             <Link to="/faq" className="link-arrow" data-reveal>See all FAQs <Icon name="arrowRight" size={16} /></Link>
           </div>
-          <div data-reveal><FaqList items={s.faqs.filter((f) => !f.draft).slice(0, 6)} /></div>
+          <div data-reveal><FaqList items={s.faqs.filter((f) => f.published && !f.draft).slice(0, 6)} /></div>
         </div>
       </section>
     </>
@@ -236,7 +242,7 @@ function Marquee() {
 
 /** "How it works" as sticky stacking cards: each step pins, and the one beneath settles back. */
 function Journey() {
-  const { state } = useStore();
+  const { site } = useStore();
   const stack = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = stack.current;
@@ -262,7 +268,7 @@ function Journey() {
     ['Choose a course', 'Browse the courses and read what each one covers, lesson by lesson.', 'book', 'triangle'],
     ['Enroll', 'Create your account and complete a secure checkout in a few minutes.', 'card', 'twist'],
     ['Log in', 'Sign in with Student Login to reach your personal dashboard.', 'user', 'tree'],
-    ['Start learning', `Open your first lesson and practise along with ${state.settings.displayName}.`, 'play', 'warrior'],
+    ['Start learning', `Open your first lesson and practise along with ${site.displayName}.`, 'play', 'warrior'],
   ];
   return (
     <section className="section section-dark" data-expand>
@@ -400,8 +406,7 @@ function CourseShowcase({ courses }: { courses: Course[] }) {
 }
 
 export function InstagramCard() {
-  const { state } = useStore();
-  const s = state.settings;
+  const { site: s } = useStore();
   return (
     <div className="ig-card">
       <div className="ig-avatar"><Icon name="instagram" size={34} /></div>

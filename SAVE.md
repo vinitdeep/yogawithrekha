@@ -1,6 +1,6 @@
 # SAVE — Yoga with Rekha (project handover)
 
-Read this first when reopening the project. Last updated **14 October 2026**.
+Read this first when reopening the project. Last updated **15 October 2026** (demo/production upgrade).
 
 ## At a glance
 
@@ -8,7 +8,7 @@ Read this first when reopening the project. Last updated **14 October 2026**.
 |---|---|
 | **Client** | Rekha — *Yoga with Rekha*, course brand **Rekha Radiance Method** (prerecorded face yoga) |
 | **Agency** | V Media Production |
-| **Status** | Interactive client **demo** (no real backend, payments or video hosting yet) |
+| **Status** | Demo works end to end. Production backend (Supabase RLS + Edge Functions, Razorpay, private video, Resend) is **built and tested locally but not yet deployed** — see SETUP-PRODUCTION.md |
 | **Target launch** | ~15 December 2026 |
 | **Live preview** | https://vinitdeep.github.io/yogawithrekha/ |
 | **Repository** | https://github.com/vinitdeep/yogawithrekha (**public**) — branches `main` (source) and `gh-pages` (built preview) |
@@ -28,7 +28,7 @@ npm run build:pages  # GitHub Pages build at /yogawithrekha/ -> dist/
 | Role | Where | Email | Password |
 |---|---|---|---|
 | Student | Header → *Student Login* (`/login`) | `student@example.com` | `practice123` |
-| Admin | Footer → *Admin login* (`/admin/login`) | `admin@example.com` | `admin12345` |
+| Admin | Footer → *Admin login* (`/admin/login`) — never linked from the header | `admin@example.com` | `admin12345` |
 
 Reset all demo data: **Admin → Settings → Demo data → Reset demo data**.
 
@@ -36,7 +36,7 @@ Reset all demo data: **Admin → Settings → Demo data → Reset demo data**.
 
 - **Public site:** Home, Courses, Course detail, About, FAQ (searchable), Contact, Privacy / Terms / Refund (drafts), 404.
 - **Enrollment:** course → simulated checkout (create account or sign in, terms, success / failure / retry) → dashboard. Duplicate enrollments are blocked, and replaying a payment notification creates nothing new.
-- **Student area:** dashboard (progress %, access dates, resume, expired state), lesson player with *Mark complete*, previous / next, and account (profile, password, purchases, access).
+- **Student area:** sign in at *Student Login* (`/login`) → **My Courses** (`/dashboard`) lists every purchased course: dashboard (progress %, access dates, resume, expired state), lesson player with *Mark complete*, previous / next, and account (profile, password, purchases, access).
 - **Admin:** overview, courses & lessons editor (modules, ordering, simulated video upload), students (grant / revoke / extend), payments (filters), settings (brand, about, contact, FAQ, policies, access rules, demo reset).
 - **Access rule:** 6 calendar months from enrollment. If the day doesn't exist in the end month, access ends on that month's last day (31 Aug → 28/29 Feb). See `src/lib/dates.ts`.
 
@@ -61,7 +61,10 @@ Reset all demo data: **Admin → Settings → Demo data → Reset demo data**.
 | Path | Purpose |
 |---|---|
 | `src/lib/seed.ts` | **All sample content** (courses, lessons, prices, FAQ, policies, sample students). Bump `STATE_VERSION` when changing it so browsers reload the seed. |
-| `src/lib/store.tsx` | Demo "backend" (localStorage). Each action marks where a server endpoint goes. |
+| `src/lib/store.tsx` | React store over the selected backend (`src/lib/demo/` simulated, `src/lib/supabase/` production); `site` = published settings or the admin's draft preview |
+| `src/lib/config.ts` | Demo vs production switch (`VITE_APP_MODE`), build-time constant so production strips demo code |
+| `supabase/` | Migrations (schema, RLS, functions, storage), `seed.sql`, Edge Functions |
+| `tests/` | `npm test` (69 tests incl. SQL security in PGlite) · `npm run test:e2e` (100 browser checks, needs dev server) · `tests/e2e/prod-failsafe.mjs` |
 | `src/lib/motion.ts` | Scroll and animation engine. |
 | `src/components/brand.tsx` | Portrait / pose images (`POSES`, `poseCutout`, `cutoutFor`), course art, prices, currency. |
 | `src/styles.css` | Base styles, then appended layers: MODERN THEME → SCROLL EFFECTS → COURSE SHOWCASE → REKHA IMAGES (later layers override earlier ones). |
@@ -78,7 +81,17 @@ npm run build:pages
 
 The preview updates about 30–60 seconds after the push. Shared links such as `/yogawithrekha/courses` redirect once to the trailing-slash URL and return 200.
 
+## Change log
+
+- **15 Oct 2026** — Removed the admin link from the top header (desktop + mobile). The header button is now *Student Login*, or *My Courses* for a signed-in student; admins sign in only via the footer's *Admin login* (`src/components/Layout.tsx`). Re-verified student login → My Courses flow in a browser. Not yet redeployed to GitHub Pages.
+- **Open question:** the student login page's "Demo accounts" box still shows the admin credentials — remove if admin should stay fully out of public view.
+
 ## Gotchas learned
+
+- **Demo data is per browser.** E2E checks of what visitors see must use a second tab in the SAME browser context.
+- **Bash heredocs with Python/CSS content failed in this harness** — write scripts to the scratchpad with the file tool.
+- **Password labels have a visual `*`** — locate password inputs by `autocomplete`, not exact label.
+- **STATE_VERSION is 5**; prices are in paise/cents.
 
 - **Git Bash mangles `/yogawithrekha/` CLI arguments** into `C:/Program Files/Git/...`. Prefix with `MSYS_NO_PATHCONV=1`; npm scripts are not affected.
 - **Use `opacity`, never `autoAlpha`,** for reveals: `visibility: hidden` removes not-yet-revealed content from screen readers.
@@ -99,7 +112,7 @@ See **DEMO-NOTES.md §3**. In short:
 Client content still to come:
 - final course names, curricula and prices;
 - real photos of Rekha;
-- her story and verified credentials (the full name *Rekha Sakthivadivel* and *ERYT 500hrs* are stored **unpublished** until confirmed);
+- her story and verified full name/credentials (no longer stored in the code — enter them in Admin → Settings once confirmed);
 - support email and WhatsApp;
 - reviewed policies.
 

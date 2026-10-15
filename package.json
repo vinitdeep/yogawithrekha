@@ -8,9 +8,14 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "build:pages": "tsc --noEmit && vite build --base=/yogawithrekha/ && node scripts/spa-fallback.mjs"
+    "build:pages": "tsc --noEmit && vite build --base=/yogawithrekha/ && node scripts/spa-fallback.mjs",
+    "build:prod": "tsc --noEmit && node -e \"process.env.VITE_APP_MODE='production';require('child_process').execSync('npx vite build',{stdio:'inherit',env:process.env})\"",
+    "test": "vitest run",
+    "test:e2e": "node tests/e2e/demo.e2e.mjs",
+    "check:prod-bundle": "node scripts/check-prod-bundle.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.45.4",
     "gsap": "3.13.0",
     "lenis": "1.3.4",
     "react": "18.3.1",
@@ -18,10 +23,13 @@
     "react-router-dom": "6.28.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.2.17",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@vitejs/plugin-react": "4.3.4",
+    "playwright-core": "1.49.1",
     "typescript": "5.6.3",
-    "vite": "5.4.11"
+    "vite": "5.4.11",
+    "vitest": "2.1.8"
   }
 }

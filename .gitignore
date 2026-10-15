@@ -3,3 +3,8 @@ dist
 *.local
 .env
 .snapshots
+
+# local env files and test output
+.env.local
+.env.*.local
+tests/e2e/shots

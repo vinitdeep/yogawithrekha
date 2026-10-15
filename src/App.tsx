@@ -1,7 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Outlet, createBrowserRouter, useLocation } from 'react-router-dom';
 import { useStore } from './lib/store';
-import { Footer, Header, PublicLayout, ScrollToTop } from './components/Layout';
+import { DemoControls, DraftPreviewBar, Footer, Header, LearnerFooter, PublicLayout, ScrollToTop } from './components/Layout';
 import Home from './pages/Home';
 import { CourseDetail, Courses } from './pages/Courses';
 import { About, Contact, Faq, Policy } from './pages/Info';
@@ -15,6 +15,7 @@ const AdminLogin = lazy(() => adminMod().then((m) => ({ default: m.AdminLogin })
 const AdminOverview = lazy(() => adminMod().then((m) => ({ default: m.AdminOverview })));
 const AdminStudents = lazy(() => adminMod().then((m) => ({ default: m.AdminStudents })));
 const AdminPayments = lazy(() => adminMod().then((m) => ({ default: m.AdminPayments })));
+const AdminAudit = lazy(() => adminMod().then((m) => ({ default: m.AdminAudit })));
 const AdminCourses = lazy(() => import('./pages/admin/AdminCourses').then((m) => ({ default: m.AdminCourses })));
 const AdminCourseEditor = lazy(() => import('./pages/admin/AdminCourses').then((m) => ({ default: m.AdminCourseEditor })));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings').then((m) => ({ default: m.AdminSettings })));
@@ -32,7 +33,11 @@ function Root() {
   );
 }
 
-/** Client-side guard for the demo. Production: every protected API call is authorised on the server. */
+/**
+ * Route guard. This is a USABILITY feature only — it decides which screen to show.
+ * Demo: there is no real security at all. Production: every protected read and write is
+ * authorised by the database (row-level security) and Edge Functions, whatever this guard does.
+ */
 function RequireAuth({ role }: { role?: 'admin' | 'student' }) {
   const { user } = useStore();
   const loc = useLocation();
@@ -54,14 +59,16 @@ function RequireAuth({ role }: { role?: 'admin' | 'student' }) {
   return <Outlet />;
 }
 
-/** Student pages share the public header/footer. */
+/** Signed-in student pages: the public header with a compact learner footer (no sales promotion). */
 function StudentLayout() {
   return (
     <>
       <Header />
       <div className="header-spacer" aria-hidden="true" />
       <main id="main" className="page-fade" style={{ minHeight: '60vh' }}><Outlet /></main>
-      <Footer />
+      <LearnerFooter />
+      <DraftPreviewBar />
+      <DemoControls />
     </>
   );
 }
@@ -110,6 +117,7 @@ export const router = createBrowserRouter([
             { path: 'courses/:id', element: <AdminCourseEditor /> },
             { path: 'students', element: <AdminStudents /> },
             { path: 'payments', element: <AdminPayments /> },
+            { path: 'audit', element: <AdminAudit /> },
             { path: 'settings', element: <AdminSettings /> },
           ],
         }],

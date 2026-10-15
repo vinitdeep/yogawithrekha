@@ -5,6 +5,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { getLenis } from '../lib/motion';
+import { useStore } from '../lib/store';
 
 /* ---------------- Toasts ---------------- */
 
@@ -50,6 +51,9 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md', de
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
+  // Keep the latest onClose without re-running the focus effect on every render.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +66,9 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md', de
     const first = focusables().find((el) => el.matches('input, select, textarea')) ?? node;
     first?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      const overlays = document.querySelectorAll('.overlay');
+      if (overlays[overlays.length - 1] !== node?.parentElement) return; // a dialog on top of this one handles keys
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeRef.current(); }
       if (e.key === 'Tab') {
         const f = focusables();
         if (!f.length) return;
@@ -78,14 +84,15 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md', de
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
-      getLenis()?.start();
-      prev?.focus();
+      // Only restart smooth scrolling if no other dialog is still open.
+      if (!document.querySelector('.overlay')) getLenis()?.start();
+      if (prev && document.contains(prev)) prev.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return createPortal(
-    <div className="overlay" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="overlay" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current(); }}>
       <div
         ref={ref} className={`dialog ${size === 'lg' ? 'dialog-lg' : ''}`} role="dialog" aria-modal="true"
         aria-labelledby={titleId} aria-describedby={description ? descId : undefined} tabIndex={-1}
@@ -111,22 +118,61 @@ interface ConfirmProps {
   message: ReactNode;
   confirmLabel: string;
   danger?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
 
 export function ConfirmDialog({ open, title, message, confirmLabel, danger, onConfirm, onCancel }: ConfirmProps) {
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onConfirm(); } finally { setBusy(false); }
+  };
   return (
     <Dialog
       open={open} onClose={onCancel} title={title}
       footer={
         <>
           <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={run} disabled={busy}>{busy ? 'Working…' : confirmLabel}</button>
         </>
       }
     >
       <div className="muted">{message}</div>
+    </Dialog>
+  );
+}
+
+/** Confirmation for sensitive admin changes: a written reason is required and recorded in the audit history. */
+export function ReasonDialog({ open, title, message, confirmLabel, danger, onConfirm, onCancel }: Omit<ConfirmProps, 'onConfirm'> & { onConfirm: (reason: string) => Promise<string | null> | string | null }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setReason(''); setError(''); } }, [open]);
+  const run = async () => {
+    if (busy) return;
+    if (reason.trim().length < 4) { setError('Please give a short reason (at least 4 characters). It is saved in the audit history.'); return; }
+    setBusy(true);
+    try {
+      const err = await onConfirm(reason.trim());
+      if (err) setError(err);
+    } finally { setBusy(false); }
+  };
+  return (
+    <Dialog
+      open={open} onClose={onCancel} title={title}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={run} disabled={busy}>{busy ? 'Saving…' : confirmLabel}</button>
+        </>
+      }
+    >
+      <div className="muted" style={{ marginBottom: 16 }}>{message}</div>
+      <TextArea label="Reason" required value={reason} error={error} style={{ minHeight: 80 }}
+        hint="For example: “Refund agreed by email on 3 March” or “Complimentary access for a workshop participant”."
+        onChange={(e) => { setReason(e.target.value); if (error) setError(''); }} />
     </Dialog>
   );
 }
@@ -243,10 +289,11 @@ export function SampleBadge({ children = 'Sample' }: { children?: ReactNode }) {
   return <span className="badge badge-outline">{children}</span>;
 }
 
-/** Sets the document title for each page (basic SEO / screen-reader context). */
+/** Sets the document title and description for each page (basic SEO / screen-reader context). */
 export function usePageTitle(title: string, description?: string) {
+  const { site } = useStore();
   useEffect(() => {
-    document.title = title ? `${title} · Yoga with Rekha` : 'Yoga with Rekha — Rekha Radiance Method';
+    document.title = title ? `${title} · ${site.brandName}` : `${site.brandName} — ${site.courseBrand}`;
     if (description) document.querySelector('meta[name="description"]')?.setAttribute('content', description);
-  }, [title, description]);
+  }, [title, description, site.brandName, site.courseBrand]);
 }

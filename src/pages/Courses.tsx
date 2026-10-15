@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { accessStatus, courseLessons, courseMinutes, isLive, usePublishedCourses, useStore } from '../lib/store';
+import { accessStatus, courseLessons, courseMinutes, isLive, resumeLesson, usePublishedCourses, useStore } from '../lib/store';
 import { Icon } from '../components/Icon';
 import { CurrencyToggle, Portrait, Price, ProvisionalBadge, cutoutFor, useCurrency } from '../components/brand';
 import { CourseCard, Curriculum, FaqList } from '../components/course';
 import { Dialog, Notice, usePageTitle } from '../components/ui';
-import { VideoPlayer } from '../components/VideoPlayer';
-import { formatDate } from '../lib/dates';
+import { VideoPlayer, usePlayback } from '../components/VideoPlayer';
+import { formatAccessDate, formatAccessEnd } from '../lib/dates';
 import NotFound from './NotFound';
 
 export function Courses() {
   const courses = usePublishedCourses();
-  usePageTitle('Courses', 'Prerecorded face yoga courses from the Rekha Radiance Method, each with six months of access.');
+  const { site } = useStore();
+  usePageTitle(site.seo.courses.title || 'Courses', site.seo.courses.description);
   return (
     <>
       <section className="page-hero" data-hero>
         <div className="wrap">
-          <span className="eyebrow" data-reveal>Rekha Radiance Method</span>
+          <span className="eyebrow" data-reveal>{site.courseBrand}</span>
           <h1 data-split>The <em>courses</em></h1>
           <p className="lead" data-reveal>Each course is a set of prerecorded video lessons you can follow at your own pace, with six months of access from the day you enroll.</p>
         </div>
@@ -37,7 +38,7 @@ export function Courses() {
             <div className="empty"><Icon name="book" size={40} /><h2>Courses are coming soon</h2><p className="muted">Check back closer to launch.</p></div>
           )}
           <p className="muted small" style={{ marginTop: 24 }}>
-            Prices are shown in Indian rupees or US dollars for convenience. Choosing a display currency does not guarantee that a particular payment method will be available in your country.
+            Prices can be shown in different currencies for convenience. Choosing a display currency does not guarantee that a particular payment method will be available in your country.
           </p>
         </div>
       </section>
@@ -47,22 +48,23 @@ export function Courses() {
 
 export function CourseDetail() {
   const { slug } = useParams();
-  const { state, user, enrollmentFor, progressFor } = useStore();
+  const { state, site, user, enrollmentFor, progressFor } = useStore();
   const { currency } = useCurrency();
   const [previewOpen, setPreviewOpen] = useState(false);
   const course = state.courses.find((c) => c.slug === slug && (c.status === 'published' || user?.role === 'admin'));
+  const lessons = course ? courseLessons(course) : [];
+  const preview = lessons.find((l) => l.preview);
+  const playback = usePlayback(course?.id, preview);
   usePageTitle(course?.title ?? 'Course', course?.tagline);
   if (!course) return <NotFound />;
 
-  const lessons = courseLessons(course);
-  const preview = lessons.find((l) => l.preview) ?? lessons[0];
   const enr = user ? enrollmentFor(user.id, course.id) : undefined;
   const status = accessStatus(enr);
   const live = isLive(status);
   const p = user ? progressFor(user.id, course.id) : undefined;
-  const resumeId = p?.lastLessonId ?? lessons[0]?.id;
-  const s = state.settings;
-  const faqs = s.faqs.filter((f) => ['Six-month access', 'Prerecorded format', 'Login and lesson access', 'Payment questions'].includes(f.category)).slice(0, 5);
+  const resumeId = resumeLesson(course, p)?.id;
+  const s = site;
+  const faqs = s.faqs.filter((f) => f.published && ['Six-month access', 'Prerecorded format', 'Login and lesson access', 'Payment questions'].includes(f.category)).slice(0, 5);
 
   const action = live ? (
     <Link to={`/learn/${course.slug}/${resumeId}`} className="btn btn-primary btn-block">Continue learning</Link>
@@ -72,7 +74,7 @@ export function CourseDetail() {
 
   return (
     <>
-      {course.status === 'draft' && <div className="wrap" style={{ paddingTop: 16 }}><Notice kind="warn">Draft course — only visible to admins.</Notice></div>}
+      {course.status !== 'published' && <div className="wrap admin-preview-note"><Notice kind="warn">{course.status === 'draft' ? 'Draft course' : 'Archived course'} — admin preview. Visitors can’t see this page.</Notice></div>}
       <section className="detail-hero" data-hero>
         {cutoutFor(course.image) && (
           <div className="detail-figure" aria-hidden="true">
@@ -122,7 +124,7 @@ export function CourseDetail() {
               <h2 id="prev">Preview a lesson</h2>
               {preview ? (
                 <>
-                  <VideoPlayer lesson={preview} label="Free preview · placeholder" />
+                  <VideoPlayer lesson={preview} src={playback.src} loading={playback.loading} label="Free preview · placeholder" />
                   <p className="muted small" style={{ marginTop: 10 }}>{preview.title} · {preview.durationMin} min. {preview.description}</p>
                 </>
               ) : <p className="muted">A preview lesson will be added soon.</p>}
@@ -139,7 +141,7 @@ export function CourseDetail() {
                 <div style={{ width: 96, flex: 'none' }}><Portrait small /></div>
                 <div>
                   <span className="eyebrow" style={{ marginBottom: 4 }}>Your instructor</span>
-                  <h2 id="inst" style={{ fontSize: '1.4rem' }}>{s.fullNameConfirmed ? s.fullName : s.displayName}</h2>
+                  <h2 id="inst" style={{ fontSize: '1.4rem' }}>{s.fullNameConfirmed && s.fullName.trim() ? s.fullName : s.displayName}</h2>
                   <p className="muted" style={{ margin: 0 }}>{s.aboutIntro}</p>
                   <Link to="/about" className="link-btn" style={{ display: 'inline-block', marginTop: 10 }}>More about {s.displayName}</Link>
                 </div>
@@ -149,7 +151,7 @@ export function CourseDetail() {
             <section aria-labelledby="access">
               <h2 id="access">How access works</h2>
               <p>Your access lasts <strong>{course.accessMonths} calendar months</strong>, starting the moment your enrollment is confirmed. During that time you can watch every lesson as often as you like, on any device.</p>
-              <p className="muted">For example, if you enroll on 15 December 2026, your access runs until the end of 15 June 2027. If your start date falls on a day that doesn’t exist in the final month (such as 31 August), access ends on that month’s last day (28 or 29 February). Your exact end date is always shown on your dashboard.</p>
+              <p className="muted">For example, if you enroll on 15 December 2026 with six months of access, it runs until 11:59 pm India time (IST) on 15 June 2027. If your start date falls on a day that doesn’t exist in the final month (such as 31 August), access ends on that month’s last day (28 or 29 February). Your exact end date and time are always shown on your dashboard.</p>
             </section>
 
             <section aria-labelledby="cfaq">
@@ -165,11 +167,11 @@ export function CourseDetail() {
                 <CurrencyToggle />
               </div>
               {live && enr ? (
-                <Notice kind="ok" title={status === 'scheduled' ? 'You’re enrolled' : 'You’re enrolled'}>
-                  {status === 'scheduled' ? <>Access opens on {formatDate(enr.startAt)}.</> : <>Access until {formatDate(enr.expiresAt)}.</>}
+                <Notice kind="ok" title="You’re enrolled">
+                  {status === 'scheduled' ? <>Access opens on {formatAccessDate(enr.startAt)}.</> : <>Access until {formatAccessEnd(enr.expiresAt)}.</>}
                 </Notice>
               ) : status === 'expired' && enr ? (
-                <Notice kind="warn" title="Your previous access has ended">Ended on {formatDate(enr.expiresAt)}. You can enroll again below.</Notice>
+                <Notice kind="warn" title="Your previous access has ended">Ended on {formatAccessDate(enr.expiresAt)}. You can enroll again below.</Notice>
               ) : null}
               <div style={{ margin: '16px 0' }}>{action}</div>
               <ul className="check-list small">
@@ -185,7 +187,8 @@ export function CourseDetail() {
         </div>
       </div>
 
-      <div className="mobile-enroll">
+      {/* Phones: a slim enrollment bar that sits in the page flow at the end, so it never hides the last content. */}
+      <div className="mobile-enroll" aria-label="Enrollment">
         <Price course={course} />
         <div style={{ minWidth: 160 }}>{action}</div>
       </div>
