@@ -33,7 +33,7 @@ npm run build:prod          # production build (needs VITE_SUPABASE_* — see .e
 
 Full production steps: **SETUP-PRODUCTION.md**. Assumptions and client decisions: **DEMO-NOTES.md**.
 
-## Demo logins (simulated — never a real password)
+## Demo logins (simulated — never a real password) — also in DEMO-LOGINS.md
 
 | Role | Where | Email | Password |
 |---|---|---|---|
