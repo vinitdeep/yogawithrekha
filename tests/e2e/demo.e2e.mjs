@@ -38,6 +38,8 @@ async function login(page, email, password, path = '/login') {
   await page.getByRole('button', { name: /^Sign in/ }).click();
 }
 const text = (page) => page.locator('main').innerText();
+// Static hosts (GitHub Pages) may add a trailing slash to deep links.
+const HOME = (url) => url.href.replace(/\/$/, '') === BASE.replace(/\/$/, '');
 
 /* ------------------------------------------------------------------ */
 
@@ -70,9 +72,9 @@ await test('2. Student sign-in, invalid credentials, sign-out', async () => {
   check((await text(p)).includes('Welcome, Demo'), 'dashboard welcome');
   check(await p.locator('.site-footer').count() === 0 && await p.locator('.learner-footer').count() === 1, 'dashboard uses the compact learner footer');
   await p.getByRole('button', { name: 'Sign out' }).first().click();
-  await p.waitForURL(BASE + '/');
+  await p.waitForURL(HOME);
   await go(p, '/dashboard');
-  await p.waitForURL('**/login?next=%2Fdashboard');
+  await p.waitForURL(/\/login\?next=%2Fdashboard(%2F)?$/);
   check(true, 'signed out: dashboard redirects to login');
   await p.context().close();
 });
@@ -263,7 +265,7 @@ await test('16–18. Admin edits reach the right screens; drafts stay unpublishe
   await go(visitor, '/');
   check(!(await visitor.locator('.hero h1').innerText()).includes('Practise with calm'), 'visitors do not see the unpublished draft');
   await p.getByRole('button', { name: 'Preview', exact: true }).click();
-  await p.waitForURL(BASE + '/');
+  await p.waitForURL(HOME);
   check((await p.locator('.hero h1').innerText()).includes('Practise with calm.'), 'admin preview shows the draft');
   check(await p.locator('.preview-bar').isVisible(), 'preview bar shown');
   await p.getByRole('link', { name: 'Back to settings' }).click();
