@@ -1,6 +1,6 @@
 # SAVE — Yoga with Rekha (project handover)
 
-Read this first when reopening the project. Last updated **15 October 2026** (demo/production upgrade).
+Read this first when reopening the project. Last updated **15 October 2026** (demo/production upgrade, commit `0dc7770`).
 
 ## At a glance
 
@@ -8,115 +8,115 @@ Read this first when reopening the project. Last updated **15 October 2026** (de
 |---|---|
 | **Client** | Rekha — *Yoga with Rekha*, course brand **Rekha Radiance Method** (prerecorded face yoga) |
 | **Agency** | V Media Production |
-| **Status** | Demo works end to end. Production backend (Supabase RLS + Edge Functions, Razorpay, private video, Resend) is **built and tested locally but not yet deployed** — see SETUP-PRODUCTION.md |
-| **Target launch** | ~15 December 2026 |
-| **Live preview** | https://vinitdeep.github.io/yogawithrekha/ |
-| **Repository** | https://github.com/vinitdeep/yogawithrekha (**public**) — branches `main` (source) and `gh-pages` (built preview) |
+| **Status** | **Demo** works end to end and is live. **Production** backend (Supabase RLS + Edge Functions, Razorpay, private video, Resend email) is written and tested locally, but **not deployed to any live Supabase project** and not tested with real payments. Not production-ready yet. |
+| **Target launch** | ~15 December 2026 (tentative) |
+| **Live demo preview** | https://vinitdeep.github.io/yogawithrekha/ (redeployed 15 Oct 2026) |
+| **Repository** | https://github.com/vinitdeep/yogawithrekha (**public**) — `main` (source), `gh-pages` (built demo) |
 | **Local folder** | `C:\Users\vinit\Documents\Claude\Projects\yoga-with-rekha` |
 
 ## Run it locally
 
 ```bash
 npm install
-npm run dev          # http://localhost:5180
-npm run build        # production build at /  -> dist/
-npm run build:pages  # GitHub Pages build at /yogawithrekha/ -> dist/
+npm run dev                 # demo at http://localhost:5180
+npm test                    # 69 unit + database-security tests (PGlite, no network)
+npm run test:e2e            # 100 browser checks — needs the dev server running + Chrome
+npm run check:prod-bundle   # proves the production build has no demo code
+npm run build:pages         # GitHub Pages demo build (/yogawithrekha/) -> dist/
+npm run build:prod          # production build (needs VITE_SUPABASE_* — see .env.example)
 ```
 
-## Logins (demo — simulated, saved only in the viewer's browser)
+## Two modes (`VITE_APP_MODE`, see `.env.example`)
+
+- **demo** (default): data in the viewer's browser (localStorage), simulated sign-in / payments / uploads / admin. **No real security.**
+- **production**: Supabase. Demo logins, sample data, reset and simulated checkout are **compiled out**. Missing config, an unreachable backend or a service-role key in the browser → a safe error screen, never a fallback to demo.
+
+Full production steps: **SETUP-PRODUCTION.md**. Assumptions and client decisions: **DEMO-NOTES.md**.
+
+## Demo logins (simulated — never a real password)
 
 | Role | Where | Email | Password |
 |---|---|---|---|
 | Student | Header → *Student Login* (`/login`) | `student@example.com` | `practice123` |
 | Admin | Footer → *Admin login* (`/admin/login`) — never linked from the header | `admin@example.com` | `admin12345` |
 
-Reset all demo data: **Admin → Settings → Demo data → Reset demo data**.
+Quicker: **Demo mode** button (bottom-left on desktop; inside the ☰ menu on phones; Admin → Website settings → Demo data in admin) → *View as demo student / admin* or **Reset demo data** (asks for confirmation).
 
 ## What's built
 
-- **Public site:** Home, Courses, Course detail, About, FAQ (searchable), Contact, Privacy / Terms / Refund (drafts), 404.
-- **Enrollment:** course → simulated checkout (create account or sign in, terms, success / failure / retry) → dashboard. Duplicate enrollments are blocked, and replaying a payment notification creates nothing new.
-- **Student area:** sign in at *Student Login* (`/login`) → **My Courses** (`/dashboard`) lists every purchased course: dashboard (progress %, access dates, resume, expired state), lesson player with *Mark complete*, previous / next, and account (profile, password, purchases, access).
-- **Admin:** overview, courses & lessons editor (modules, ordering, simulated video upload), students (grant / revoke / extend), payments (filters), settings (brand, about, contact, FAQ, policies, access rules, demo reset).
-- **Access rule:** 6 calendar months from enrollment. If the day doesn't exist in the end month, access ends on that month's last day (31 Aug → 28/29 Feb). See `src/lib/dates.ts`.
+- **Public site:** Home (editable hero, one primary action), Courses, Course detail (curriculum, free preview, access rules, compact mobile enroll bar), About, searchable FAQ, Contact, Privacy / Terms / Refund (drafts), 404.
+- **Accounts:** register, sign in/out, generic errors, throttling, session expiry, password reset, return to the intended page.
+- **Checkout:** simulated success / failure / retry; double clicks and replayed notifications never duplicate orders or enrollments. Production: server-priced order + Razorpay + signed webhook.
+- **Student:** My Courses (progress, exact access end in IST, remaining time, resume, expired/revoked states with support), lesson page (module nav, prev/next, Mark complete, transcript/captions), account (profile, password, purchases, access), compact learner footer.
+- **Admin:** Overview · Courses & lessons (per-currency prices in paise/cents, Draft/Published/Archived, lessons, video upload with progress/cancel/retry, damage warnings) · Students (search, filters, lesson-level progress, grant/extend/revoke/restore **with required reason**) · Orders & payments (filters, per-currency totals, complimentary-access tab) · Website settings (**draft → preview → publish**) · Audit history.
+- **Access rule:** N calendar months from enrollment, ending **23:59:59 IST** on the same day-of-month; month-end clamped (31 Aug → 28/29 Feb). Same rule in `src/lib/dates.ts` and SQL `compute_expiry`.
+- **Out of scope:** subscriptions, live classes, certificates, quizzes, forums, AI, lesson Q&A.
 
 ## Design & motion
 
 - **Style:** bold modern sans — Plus Jakarta Sans 800, gradient accent words (`h1/h2 em`), mesh-gradient heroes, glass chips, bento grid, forest / ivory / sage / rose palette.
-- **Motion engine:** `src/lib/motion.ts` (GSAP 3.13 ScrollTrigger + SplitText, Lenis smooth scroll), driven by attributes:
-  `data-split` · `data-reveal` · `data-reveal-group` · `data-rise-group` · `data-parallax` · `data-scrub-words` · `data-draw` · `data-clip` · `data-expand` · `data-rise` · `data-grow`.
-- **Signature effects:** hero scroll-out plus mouse depth parallax; break-out arch portraits; velocity marquee; scroll-filled statement; stacking "How it works" cards; **pinned course showcase** (`CourseShowcase` in `src/pages/Home.tsx`); expanding dark sections; top progress bar; rising footer wordmark.
-- **Reduced motion** is respected everywhere (content renders static, nothing hidden).
-- **Sized by viewport height** as well as width, so it fits laptops (checked at 1280×620, 1366×657, 1536×730, 1920×960) and 375–390px phones.
+- **Motion engine:** `src/lib/motion.ts` (GSAP 3.13 ScrollTrigger + SplitText, Lenis), driven by `data-split` · `data-reveal` · `data-reveal-group` · `data-rise-group` · `data-parallax` · `data-scrub-words` · `data-draw` · `data-clip` · `data-expand` · `data-rise` · `data-grow`.
+- **Signature effects:** hero scroll-out + mouse depth parallax; arch portraits; velocity marquee; scroll-filled statement; stacking "How it works" cards; pinned course showcase (`CourseShowcase` in `src/pages/Home.tsx`); expanding dark sections; progress bar; rising footer wordmark.
+- **Reduced motion** respected everywhere. Sized by viewport height too (laptops 1280×620 and up, phones 375–390px). No horizontal overflow (checked by the e2e tests).
 
 ## Images
 
-- `Images/` — 6 original pose PNGs supplied by the agency.
-- `public/images/rekha/` — `*.webp` full scenes plus `*-cutout.webp` background-removed figures (removed locally with `rembg`, model `isnet-general-use`).
-- ⚠️ **All six are AI-generated** (OpenAI C2PA credentials embedded). The client brief says not to present AI-generated people as Rekha. They are used across the demo at the agency's request, but **must be replaced with real photographs, or clearly disclosed with Rekha's written approval, before launch.**
-- A portrait uploaded in Admin → Settings overrides the hero and About images.
+- `Images/` — 6 original pose PNGs; `public/images/rekha/` — `*.webp` scenes + `*-cutout.webp` (rembg, `isnet-general-use`).
+- ⚠️ **All six are AI-generated** (OpenAI C2PA credentials). The brief says not to present AI-generated people as Rekha — **replace with real photos, or disclose with Rekha's written approval, before launch.** Alt text already labels them as placeholders.
+- A portrait/logo uploaded in Admin → Website settings overrides them.
 
 ## Key files
 
 | Path | Purpose |
 |---|---|
-| `src/lib/seed.ts` | **All sample content** (courses, lessons, prices, FAQ, policies, sample students). Bump `STATE_VERSION` when changing it so browsers reload the seed. |
-| `src/lib/store.tsx` | React store over the selected backend (`src/lib/demo/` simulated, `src/lib/supabase/` production); `site` = published settings or the admin's draft preview |
-| `src/lib/config.ts` | Demo vs production switch (`VITE_APP_MODE`), build-time constant so production strips demo code |
-| `supabase/` | Migrations (schema, RLS, functions, storage), `seed.sql`, Edge Functions |
-| `tests/` | `npm test` (69 tests incl. SQL security in PGlite) · `npm run test:e2e` (100 browser checks, needs dev server) · `tests/e2e/prod-failsafe.mjs` |
-| `src/lib/motion.ts` | Scroll and animation engine. |
-| `src/components/brand.tsx` | Portrait / pose images (`POSES`, `poseCutout`, `cutoutFor`), course art, prices, currency. |
-| `src/styles.css` | Base styles, then appended layers: MODERN THEME → SCROLL EFFECTS → COURSE SHOWCASE → REKHA IMAGES (later layers override earlier ones). |
-| `scripts/spa-fallback.mjs` | Pages build: copies `index.html` to the main routes and to `404.html`. |
-| `DEMO-NOTES.md` | Demo vs production, assumptions, optional features. |
+| `src/lib/config.ts` | Demo vs production switch — a **build-time constant** so production strips demo code |
+| `src/lib/backend/types.ts` | The backend interface all screens use |
+| `src/lib/demo/engine.ts`, `src/lib/demo/backend.ts` | Simulated "server" rules (unit-tested) + localStorage backend |
+| `src/lib/supabase/backend.ts` | Production adapter (untested against a live project) |
+| `src/lib/store.tsx` | React store over the backend; `site` = published settings, or the admin's draft while previewing |
+| `src/lib/access.ts`, `dates.ts`, `money.ts` | Access/progress rules, IST expiry, minor-unit money |
+| `src/lib/seed.ts` | Demo sample content. **`STATE_VERSION` = 5** — bump when changing it. Prices in paise/cents. |
+| `supabase/migrations/0001_schema.sql` | Tables, RLS (deny by default), trusted functions, audit |
+| `supabase/migrations/0002_storage.sql` | Buckets + storage policies (not executed locally — needs Supabase) |
+| `supabase/seed.sql` | Initial settings for a new production DB |
+| `supabase/functions/` | `create-order`, `payment-webhook`, `lesson-playback`, `_shared/` (Razorpay, email, http) |
+| `tests/` | `engine`, `dates`, `payments`, `sql/` (PGlite security), `e2e/demo.e2e.mjs`, `e2e/prod-failsafe.mjs` |
+| `src/styles.css` | Layers: base → MODERN THEME → SCROLL EFFECTS → COURSE SHOWCASE → REKHA IMAGES → UPGRADE LAYER (later wins) |
+| `scripts/spa-fallback.mjs`, `scripts/check-prod-bundle.mjs` | Pages deep-link fallback; production-bundle demo-leak check |
 
-## Redeploy the GitHub Pages preview
+## Redeploy the GitHub Pages demo
 
 ```bash
 npm run build:pages
-# then copy dist/ into a separate checkout of the gh-pages branch, commit, and push:
-#   git push origin gh-pages
+git fetch origin gh-pages
+git worktree add "$TEMP/ywr-ghpages" origin/gh-pages --detach
+cd "$TEMP/ywr-ghpages" && git rm -rq . && cp -r <project>/dist/. . && git add -A && git commit -m "Deploy demo" && git push origin HEAD:gh-pages
+cd - && git worktree remove --force "$TEMP/ywr-ghpages"
 ```
 
-The preview updates about 30–60 seconds after the push. Shared links such as `/yogawithrekha/courses` redirect once to the trailing-slash URL and return 200.
+Live about 30–60 s after the push. Deep links (e.g. `/yogawithrekha/courses`) redirect once to the trailing-slash URL and return 200.
 
 ## Change log
 
-- **15 Oct 2026** — Removed the admin link from the top header (desktop + mobile). The header button is now *Student Login*, or *My Courses* for a signed-in student; admins sign in only via the footer's *Admin login* (`src/components/Layout.tsx`). Re-verified student login → My Courses flow in a browser. Not yet redeployed to GitHub Pages.
-- **Open question:** the student login page's "Demo accounts" box still shows the admin credentials — remove if admin should stay fully out of public view.
+- **15 Oct 2026 — demo/production upgrade** (`0dc7770`, demo redeployed): mode boundary; Supabase schema/RLS/functions + Edge Functions; minor-unit multi-currency prices; archive; IST expiry rule; required reasons + audit history; settings draft/preview/publish; order filters + per-currency totals; captions/transcripts; real-progress video upload path; learner footer; shorter hero with one primary action; readable admin chart; responsive admin tables; dialog/menu focus handling; fixed dialog focus-jump bug and form-row stretching; demo control moved into the phone menu so it never covers content. Unconfirmed full name / credentials removed from code and docs (they remain in older git history of this public repo).
+- **15 Oct 2026 (earlier)** — Removed the admin link from the top header; admins sign in via the footer's *Admin login*. Student sign-in page no longer shows admin credentials (admin creds appear only on `/admin/login` in demo mode).
 
 ## Gotchas learned
 
-- **Demo data is per browser.** E2E checks of what visitors see must use a second tab in the SAME browser context.
-- **Bash heredocs with Python/CSS content failed in this harness** — write scripts to the scratchpad with the file tool.
-- **Password labels have a visual `*`** — locate password inputs by `autocomplete`, not exact label.
-- **STATE_VERSION is 5**; prices are in paise/cents.
+- **Demo data is per browser.** E2E checks of what visitors see must use a second tab in the SAME browser context, or they test a fresh seed and prove nothing.
+- **Bash heredocs with Python/CSS content fail in this harness** — write scripts to the scratchpad with the file tool.
+- **Password labels have a visual `*`** — locate password inputs by `autocomplete`, not exact label text.
+- **Port 5180** may already be held by an older `vite` of this project — reuse it (it serves current code).
+- **Git Bash mangles `/yogawithrekha/` CLI arguments** into `C:/Program Files/Git/...`. Prefix with `MSYS_NO_PATHCONV=1`; npm scripts are fine.
+- **Use `opacity`, never `autoAlpha`,** for reveals (`visibility: hidden` hides content from screen readers).
+- **Stacking cards:** dim with the `.stack-shade` overlay, never by fading the card.
+- **Cut-out images** need `.portrait-pose .portrait-cutout` specificity.
+- **Course rail** starts offset (42vw) so wide screens still have horizontal travel.
+- **New SQL functions** get default execute grants on Supabase — revoke from `public, anon, authenticated` in every migration.
+- **Snapshots** in `.snapshots/` (git-ignored): `pre-redesign-*`, `editorial-*`, `pre-upgrade-20261015.tgz`.
 
-- **Git Bash mangles `/yogawithrekha/` CLI arguments** into `C:/Program Files/Git/...`. Prefix with `MSYS_NO_PATHCONV=1`; npm scripts are not affected.
-- **Use `opacity`, never `autoAlpha`,** for reveals: `visibility: hidden` removes not-yet-revealed content from screen readers.
-- **Stacking cards:** dim them with the `.stack-shade` overlay. Fading the card itself makes it see-through.
-- **Cut-out images** need `.portrait-pose .portrait-cutout` specificity, or the generic `.portrait img { object-fit: cover }` stretches them.
-- **Course rail** starts offset (42vw) so there is always horizontal travel. Without it, wide screens had nothing to scroll.
-- **Snapshots of earlier designs** are in `.snapshots/` (git-ignored, local only): `pre-redesign-*.tgz` (original) and `editorial-*.tgz` (serif editorial version).
+## Still needed
 
-## Still needed for production
+**To go live (see SETUP-PRODUCTION.md):** create the Supabase project, run migrations + seed, configure Auth/SMTP, provision the first admin (`bootstrap_admin`), deploy the Edge Functions, set server secrets, test Razorpay in test mode, build with `VITE_APP_MODE=production`, remove `noindex`, add backups/monitoring. Not built yet: admin MFA enrolment UI, CAPTCHA widget, contact-form email forwarding.
 
-See **DEMO-NOTES.md §3**. In short:
-- a real backend and authentication;
-- server-side authorisation and access expiry;
-- a payment provider (confirm merchant eligibility for India + US/Canada first) with verified, idempotent webhooks;
-- protected video hosting;
-- transactional email.
-
-Client content still to come:
-- final course names, curricula and prices;
-- real photos of Rekha;
-- her story and verified full name/credentials (no longer stored in the code — enter them in Admin → Settings once confirmed);
-- support email and WhatsApp;
-- reviewed policies.
-
-Launch checklist:
-- remove `noindex`;
-- build with `VITE_DEMO_MODE=false`;
-- set up analytics, monitoring and backups.
+**Decisions / content from Rekha:** payment provider (after merchant-eligibility check for India + US/Canada cards; GST/invoicing), final course names, curricula and prices (incl. CAD?), refund/renewal policy, reviewed Privacy & Terms, real photos, personal story, confirmed full name & qualifications, support email, WhatsApp (optional), access start rule for pre-launch buyers, IST end-of-day convention for students abroad.
