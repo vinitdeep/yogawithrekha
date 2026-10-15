@@ -120,15 +120,14 @@ export function CourseDetail() {
               </section>
             )}
 
-            <section aria-labelledby="prev">
-              <h2 id="prev">Preview a lesson</h2>
-              {preview ? (
-                <>
-                  <VideoPlayer lesson={preview} src={playback.src} loading={playback.loading} label="Free preview · placeholder" />
-                  <p className="muted small" style={{ marginTop: 10 }}>{preview.title} · {preview.durationMin} min. {preview.description}</p>
-                </>
-              ) : <p className="muted">A preview lesson will be added soon.</p>}
-            </section>
+            {/* Controlled in Admin → Courses → (course) → "Show a preview video on the course page". */}
+            {course.showPreview !== false && preview && (
+              <section aria-labelledby="prev">
+                <h2 id="prev">Preview a lesson</h2>
+                <VideoPlayer lesson={preview} src={playback.src} loading={playback.loading} label="Free preview · placeholder" />
+                <p className="muted small" style={{ marginTop: 10 }}>{preview.title} · {preview.durationMin} min. {preview.description}</p>
+              </section>
+            )}
 
             <section aria-labelledby="curr">
               <div className="row" style={{ marginBottom: 8 }}><h2 id="curr" style={{ margin: 0 }}>Course curriculum</h2>{course.curriculumSample && <span className="badge badge-muted">Sample curriculum</span>}</div>

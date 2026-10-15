@@ -371,6 +371,24 @@ await test('Video: YouTube (unlisted) and Google Drive lessons play in the prote
   await p.context().close();
 });
 
+await test('Admin controls the "Preview a lesson" video on the course page', async () => {
+  const p = await newPage();
+  await go(p, '/courses/face-yoga-foundations');
+  check(await p.getByRole('heading', { name: 'Preview a lesson' }).count() === 1, 'preview shown by default');
+  await login(p, 'admin@example.com', 'admin12345', '/admin/login');
+  await p.waitForURL('**/admin');
+  await go(p, '/admin/courses/c-foundations');
+  await p.getByLabel(/Show a “Preview a lesson” video/).uncheck();
+  await p.getByRole('button', { name: 'Save course' }).click();
+  await p.getByText('All changes saved.').waitFor();
+  const t = await p.context().newPage();
+  await go(t, '/courses/face-yoga-foundations');
+  check(await t.getByRole('heading', { name: 'Preview a lesson' }).count() === 0, 'preview hidden after unticking in admin');
+  check((await t.locator('main').innerText()).includes('Course curriculum'), 'rest of the course page still shown');
+  await t.close();
+  await p.context().close();
+});
+
 await test('19. Layout: no horizontal overflow at phone and desktop widths', async () => {
   const pages = ['/', '/courses', '/courses/daily-face-yoga-practice', '/about', '/faq', '/contact', '/login', '/checkout/daily-face-yoga-practice', '/policies/terms'];
   const student = ['/dashboard', '/account', `/learn/face-neck-and-shoulder-release/l-f`];

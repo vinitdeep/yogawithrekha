@@ -223,6 +223,8 @@ export function AdminCourseEditor() {
               {listInput('Learning topics', 'topics', 'One topic per line.')}
             </div>
             <label className="check"><input type="checkbox" checked={draft.curriculumSample} onChange={(e) => set('curriculumSample', e.target.checked)} /><span>Curriculum is a sample (shows “Sample curriculum” labels)</span></label>
+            <label className="check"><input type="checkbox" checked={draft.showPreview !== false} onChange={(e) => set('showPreview', e.target.checked)} /><span>Show a “Preview a lesson” video on the course page (uses the first lesson marked <em>Free preview</em>)</span></label>
+            {draft.showPreview !== false && !courseLessons(draft).some((l) => l.preview) && <p className="hint" style={{ margin: 0 }}>No lesson is marked “Free preview”, so the preview section is hidden.</p>}
           </div>
         </section>
 

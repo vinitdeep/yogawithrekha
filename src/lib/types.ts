@@ -81,6 +81,8 @@ export interface Course {
   /** Access length for FUTURE enrollments. Existing enrollments keep their own dates. */
   accessMonths: number;
   curriculumSample: boolean;
+  /** Show the "Preview a lesson" video on the public course page (default true). */
+  showPreview?: boolean;
   modules: Module[];
   updatedAt: string;
 }

@@ -103,6 +103,7 @@ create table public.courses (
   image_alt          text not null default '',
   prices_sample      boolean not null default true,
   curriculum_sample  boolean not null default true,
+  show_preview       boolean not null default true,
   status             text not null default 'draft' check (status in ('draft', 'published', 'archived')),
   access_months      int not null default 6 check (access_months between 1 and 36),
   created_at         timestamptz not null default now(),
@@ -522,6 +523,7 @@ begin
     topics = coalesce(array(select jsonb_array_elements_text(p_course -> 'topics')), '{}'),
     art = coalesce(p_course ->> 'art', 'sage'), image_url = p_course ->> 'image', image_alt = coalesce(p_course ->> 'imageAlt', ''),
     prices_sample = (p_course ->> 'pricesSample')::boolean, curriculum_sample = (p_course ->> 'curriculumSample')::boolean,
+    show_preview = coalesce((p_course ->> 'showPreview')::boolean, true),
     status = v_status, access_months = (p_course ->> 'accessMonths')::int, updated_at = now()
   where id = v_id;
 

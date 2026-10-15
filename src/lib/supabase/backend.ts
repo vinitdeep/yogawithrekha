@@ -48,7 +48,7 @@ function mapCourse(row: any, media: Map<string, any>): Course {
     id: row.id, slug: row.slug, title: row.title, titleProvisional: row.title_provisional, tagline: row.tagline,
     description: row.description, audience: row.audience ?? [], topics: row.topics ?? [], art: row.art,
     image: row.image_url ?? undefined, imageAlt: row.image_alt ?? '', prices, pricesSample: row.prices_sample,
-    status: row.status, accessMonths: row.access_months, curriculumSample: row.curriculum_sample, modules, updatedAt: row.updated_at,
+    status: row.status, accessMonths: row.access_months, curriculumSample: row.curriculum_sample, showPreview: row.show_preview !== false, modules, updatedAt: row.updated_at,
   };
 }
 

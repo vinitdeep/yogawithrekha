@@ -282,7 +282,7 @@ function describeCourseChanges(before: Course, after: Course): { action: string;
     .map((k) => `${k} ${before.prices[k] !== undefined ? formatMoney(before.prices[k]!, k) : '—'} → ${after.prices[k] !== undefined ? formatMoney(after.prices[k]!, k) : '—'}`);
   if (priceChanges.length) out.push({ action: 'course.price', summary: `Price changed: ${priceChanges.join(', ')} (existing orders unchanged)` });
   if (before.accessMonths !== after.accessMonths) out.push({ action: 'course.access_duration', summary: `Access for new enrollments ${before.accessMonths} → ${after.accessMonths} months (existing access unchanged)` });
-  const contentKeys: (keyof Course)[] = ['title', 'slug', 'tagline', 'description', 'audience', 'topics', 'image', 'imageAlt', 'modules', 'titleProvisional', 'curriculumSample', 'pricesSample', 'art'];
+  const contentKeys: (keyof Course)[] = ['title', 'slug', 'tagline', 'description', 'audience', 'topics', 'image', 'imageAlt', 'modules', 'titleProvisional', 'curriculumSample', 'pricesSample', 'art', 'showPreview'];
   const changed = contentKeys.filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
   if (changed.length) out.push({ action: 'course.update', summary: `Updated ${changed.join(', ')}` });
   return out;
