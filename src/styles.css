@@ -1190,3 +1190,5 @@ span.error { color: var(--err); font-size: 0.85rem; display: inline-flex; gap: 6
   .vl-controls { flex-wrap: wrap; }
   .vl-controls .input { flex-basis: 100%; order: 3; }
 }
+
+.vl-current { color: var(--sage-deep); overflow-wrap: anywhere; }

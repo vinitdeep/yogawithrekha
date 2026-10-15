@@ -417,6 +417,12 @@ function LessonVideoLinks({ course, onChange }: { course: Course; onChange: (les
 
   const label = (v?: LessonVideo) => !v ? null : ({ youtube: 'YouTube', gdrive: 'Google Drive', url: 'Video link', storage: 'Uploaded file', upload: 'Demo upload' } as const)[v.kind];
   const embed = (v?: LessonVideo) => v?.kind === 'youtube' ? youTubeEmbed(v.src) : v?.kind === 'gdrive' ? driveEmbed(v.src) : null;
+  /** The link the admin would recognise for the attached video. */
+  const currentLink = (v?: LessonVideo) => !v ? null
+    : v.kind === 'youtube' ? `https://youtu.be/${v.src}`
+      : v.kind === 'gdrive' ? `https://drive.google.com/file/d/${v.src}/view`
+        : v.kind === 'url' ? v.src
+          : v.fileName ?? 'Uploaded file';
 
   return (
     <section className="card" id="ce-videos" aria-labelledby="ce-videos-h">
@@ -435,8 +441,13 @@ function LessonVideoLinks({ course, onChange }: { course: Course; onChange: (les
               <div className="vl-title">
                 <strong>{l.title || 'Untitled lesson'}</strong>
                 <span className="muted small">{module}{!l.published && ' · unpublished'}</span>
+                {l.video && (
+                  /^https:/.test(currentLink(l.video) ?? '')
+                    ? <a className="vl-current small" href={currentLink(l.video)!} target="_blank" rel="noopener noreferrer">{currentLink(l.video)}<span className="sr-only"> (opens in a new tab)</span></a>
+                    : <span className="vl-current small">{currentLink(l.video)}</span>
+                )}
                 <span className="badge-row" style={{ marginTop: 4 }}>
-                  {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {label(l.video)}</span> : <span className="badge badge-warn">No video yet</span>}
+                  {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {label(l.video)} attached</span> : <span className="badge badge-warn">No video yet</span>}
                   {e && <button type="button" className="link-btn small" onClick={() => setOpen(open === l.id ? null : l.id)} aria-expanded={open === l.id}>{open === l.id ? 'Hide preview' : 'Preview'}</button>}
                   {l.video && <button type="button" className="link-btn small link-danger" onClick={() => onChange(l.id, undefined)}>Remove</button>}
                 </span>
@@ -449,7 +460,7 @@ function LessonVideoLinks({ course, onChange }: { course: Course; onChange: (les
                     <option value="gdrive">Google Drive</option>
                   </select>
                   <label className="sr-only" htmlFor={`vl-${l.id}`}>{k === 'youtube' ? 'YouTube' : 'Google Drive'} link for {l.title}</label>
-                  <input id={`vl-${l.id}`} className="input input-sm" placeholder={k === 'youtube' ? 'https://youtu.be/…' : 'https://drive.google.com/file/d/…/view'}
+                  <input id={`vl-${l.id}`} className="input input-sm" placeholder={l.video ? 'Paste a new link to replace' : k === 'youtube' ? 'https://youtu.be/…' : 'https://drive.google.com/file/d/…/view'}
                     value={link[l.id] ?? ''} aria-invalid={!!err[l.id]} aria-describedby={err[l.id] ? `vle-${l.id}` : undefined}
                     onChange={(ev) => setLink({ ...link, [l.id]: ev.target.value })} onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); attach(l.id); } }} />
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => attach(l.id)}>{l.video ? 'Replace' : 'Attach'}</button>
