@@ -196,6 +196,7 @@ export function AdminCourseEditor() {
           <p className={`small ${dirty ? 'unsaved' : 'muted'}`} style={{ margin: 0 }} aria-live="polite">{dirty ? '● Unsaved changes' : 'All changes saved.'}</p>
         </div>
         <div className="row">
+          <a href="#ce-videos" className="btn btn-secondary btn-sm"><Icon name="video" size={16} /> Lesson videos</a>
           <a href={`${import.meta.env.BASE_URL}courses/${original.slug}`} className="btn btn-ghost btn-sm" target="_blank" rel="noopener"><Icon name="external" size={16} /> {original.status === 'published' ? 'View live page' : 'Preview page'}</a>
           <button type="button" className="btn btn-secondary btn-sm" disabled={!dirty || saving} onClick={() => { setDraft(original); setPriceText(priceTextOf(original)); setErrors({}); }}>Discard changes</button>
           <button type="button" className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : 'Save course'}</button>
@@ -290,6 +291,8 @@ export function AdminCourseEditor() {
           </div>
         </section>
 
+        <LessonVideoLinks course={draft} onChange={(lessonId, video) => setModules(draft.modules.map((m) => ({ ...m, lessons: m.lessons.map((x) => (x.id === lessonId ? { ...x, video } : x)) })))} />
+
         <section className="card" aria-labelledby="ce-curr">
           <div className="row-between" style={{ marginBottom: 14 }}>
             <div>
@@ -383,6 +386,84 @@ export function AdminCourseEditor() {
         onCancel={() => blocker.reset?.()} onConfirm={() => blocker.proceed?.()}
       />
     </>
+  );
+}
+
+/**
+ * "Lesson videos" — paste a YouTube (unlisted) or Google Drive link for each lesson directly on the
+ * course page. Changes go into the course draft; "Save course" publishes them.
+ */
+function LessonVideoLinks({ course, onChange }: { course: Course; onChange: (lessonId: string, video: LessonVideo | undefined) => void }) {
+  const lessons = course.modules.flatMap((m) => m.lessons.map((l) => ({ l, module: m.title })));
+  const [kind, setKind] = useState<Record<string, 'youtube' | 'gdrive'>>({});
+  const [link, setLink] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<Record<string, string>>({});
+  const [open, setOpen] = useState<string | null>(null);
+
+  const attach = (id: string) => {
+    const k = kind[id] ?? 'youtube';
+    const v = (link[id] ?? '').trim();
+    const parsed = k === 'youtube' ? parseYouTube(v) : parseDrive(v);
+    if (!parsed) {
+      setErr({ ...err, [id]: k === 'youtube' ? 'Not a YouTube video link — e.g. https://youtu.be/abc123XYZ_0' : 'Not a Google Drive file link — e.g. https://drive.google.com/file/d/…/view' });
+      return;
+    }
+    setErr({ ...err, [id]: '' });
+    onChange(id, { kind: k, src: parsed, attachedAt: new Date().toISOString() });
+    setLink({ ...link, [id]: '' });
+  };
+
+  const label = (v?: LessonVideo) => !v ? null : ({ youtube: 'YouTube', gdrive: 'Google Drive', url: 'Video link', storage: 'Uploaded file', upload: 'Demo upload' } as const)[v.kind];
+  const embed = (v?: LessonVideo) => v?.kind === 'youtube' ? youTubeEmbed(v.src) : v?.kind === 'gdrive' ? driveEmbed(v.src) : null;
+
+  return (
+    <section className="card" id="ce-videos" aria-labelledby="ce-videos-h">
+      <h2 id="ce-videos-h" style={{ fontSize: '1.25rem', margin: 0 }}>Lesson videos</h2>
+      <p className="muted small" style={{ margin: '4px 0 16px' }}>
+        Paste a <strong>YouTube (unlisted)</strong> or <strong>Google Drive</strong> link for each lesson, click <strong>Attach</strong>, then <strong>Save course</strong> at the top.
+        To upload a file or add captions, use <em>Edit</em> on the lesson below.
+      </p>
+      {lessons.length === 0 && <p className="muted small">Add lessons below first.</p>}
+      <ul className="video-links">
+        {lessons.map(({ l, module }) => {
+          const k = kind[l.id] ?? (l.video?.kind === 'gdrive' ? 'gdrive' : 'youtube');
+          const e = embed(l.video);
+          return (
+            <li key={l.id} className="video-link-row">
+              <div className="vl-title">
+                <strong>{l.title || 'Untitled lesson'}</strong>
+                <span className="muted small">{module}{!l.published && ' · unpublished'}</span>
+                <span className="badge-row" style={{ marginTop: 4 }}>
+                  {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {label(l.video)}</span> : <span className="badge badge-warn">No video yet</span>}
+                  {e && <button type="button" className="link-btn small" onClick={() => setOpen(open === l.id ? null : l.id)} aria-expanded={open === l.id}>{open === l.id ? 'Hide preview' : 'Preview'}</button>}
+                  {l.video && <button type="button" className="link-btn small link-danger" onClick={() => onChange(l.id, undefined)}>Remove</button>}
+                </span>
+              </div>
+              <div className="vl-input">
+                <div className="vl-controls">
+                  <label className="sr-only" htmlFor={`vk-${l.id}`}>Video source for {l.title}</label>
+                  <select id={`vk-${l.id}`} className="select input-sm" value={k} onChange={(ev) => setKind({ ...kind, [l.id]: ev.target.value as 'youtube' | 'gdrive' })}>
+                    <option value="youtube">YouTube</option>
+                    <option value="gdrive">Google Drive</option>
+                  </select>
+                  <label className="sr-only" htmlFor={`vl-${l.id}`}>{k === 'youtube' ? 'YouTube' : 'Google Drive'} link for {l.title}</label>
+                  <input id={`vl-${l.id}`} className="input input-sm" placeholder={k === 'youtube' ? 'https://youtu.be/…' : 'https://drive.google.com/file/d/…/view'}
+                    value={link[l.id] ?? ''} aria-invalid={!!err[l.id]} aria-describedby={err[l.id] ? `vle-${l.id}` : undefined}
+                    onChange={(ev) => setLink({ ...link, [l.id]: ev.target.value })} onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); attach(l.id); } }} />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => attach(l.id)}>{l.video ? 'Replace' : 'Attach'}</button>
+                </div>
+                {err[l.id] && <span id={`vle-${l.id}`} className="error">{err[l.id]}</span>}
+              </div>
+              {open === l.id && e && <div className="video-preview vl-preview"><iframe src={e} title={`Preview: ${l.title}`} allow="encrypted-media" /></div>}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small" style={{ margin: '12px 0 0' }}>
+        YouTube: set the video to <strong>Unlisted</strong> with embedding allowed. Drive: share as <strong>Anyone with the link → Viewer</strong> and turn off downloads for viewers.
+        Students watch in the protected player (watermark, hidden outbound links); no website can fully stop screen recording.
+      </p>
+    </section>
   );
 }
 
