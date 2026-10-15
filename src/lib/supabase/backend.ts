@@ -2,7 +2,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Backend, PaymentSession, Result } from '../backend/types';
 import type {
-  AppState, AuditEntry, Course, CourseProgress, Currency, Enrollment, Lesson, LessonVideo, Order, Settings, User,
+  AccessRequest, AppState, AuditEntry, Course, CourseProgress, Currency, Enrollment, Lesson, LessonVideo, Order, Settings, User,
 } from '../types';
 import type { ProductionConfig } from '../config';
 import { STATE_VERSION, defaultSettings } from '../seed';
@@ -100,6 +100,7 @@ export function createSupabaseBackend(cfg: ProductionConfig): Backend {
     const progress: Record<string, CourseProgress> = {};
     let audit: AuditEntry[] = [];
     let messages: AppState['messages'] = [];
+    let accessRequests: AccessRequest[] = [];
     if (uid) {
       const [enrQ, evQ, ordQ, compQ, resQ] = await Promise.all([
         sb.from('enrollments').select('*'),
@@ -126,6 +127,12 @@ export function createSupabaseBackend(cfg: ProductionConfig): Backend {
         const k = `${r.user_id}:${r.course_id}`;
         progress[k] = { ...(progress[k] ?? { completed: {} }), lastLessonId: r.last_lesson_id ?? undefined, updatedAt: r.updated_at };
       }
+      const rqQ = await sb.from('access_requests').select('*').order('created_at', { ascending: false });
+      accessRequests = (rqQ.data ?? []).map((r: any): AccessRequest => ({
+        id: r.id, userId: r.user_id, courseId: r.course_id, message: r.message ?? '', status: r.status, createdAt: r.created_at,
+        decidedAt: r.decided_at ?? undefined, decidedBy: r.decided_by_email ?? undefined, decisionReason: r.decision_reason ?? undefined,
+        enrollmentId: r.enrollment_id ?? undefined, recordSource: 'live',
+      }));
       if (admin) {
         const [aQ, mQ] = await Promise.all([
           sb.from('audit_log').select('*').order('at', { ascending: false }).limit(500),
@@ -150,7 +157,7 @@ export function createSupabaseBackend(cfg: ProductionConfig): Backend {
       version: STATE_VERSION, users, courses, enrollments, progress, orders, activity: [], audit, messages,
       settings: adminSettings, settingsDraft, settingsPublishedAt: published.updated_at,
       session: uid && session ? { userId: uid, expiresAt: new Date((session.expires_at ?? 0) * 1000).toISOString() } : null,
-      resetTokens: [], loginFailures: {},
+      resetTokens: [], loginFailures: {}, accessRequests,
     };
     last = state;
     return state;
@@ -309,6 +316,25 @@ export function createSupabaseBackend(cfg: ProductionConfig): Backend {
     restoreAccess: (id, reason) => rpc('admin_change_access', { p_enrollment: id, p_kind: 'restore', p_months: null, p_reason: reason }),
     extendAccess: (id, months, reason) => rpc('admin_change_access', { p_enrollment: id, p_kind: 'extend', p_months: months, p_reason: reason }),
 
+    async requestAccess(courseId, message) {
+      const { data, error } = await sb.rpc('request_access', { p_course: courseId, p_message: message });
+      if (error) return fail(friendly(error));
+      await refresh();
+      const r = last?.accessRequests.find((x) => x.id === data);
+      return r ? ok(r) : fail('Your request was sent but could not be reloaded.');
+    },
+    cancelAccessRequest: (id) => rpc('cancel_access_request', { p_request: id }),
+    decideAccessRequest: (id, approve, reason) => rpc('admin_decide_request', { p_request: id, p_approve: approve, p_reason: reason }),
+    async sendPasswordReset(userId) {
+      const u = last?.users.find((x) => x.id === userId);
+      if (!u) return fail('Student not found.');
+      // Supabase sends the email; nobody ever sees the password. The audit entry is written server-side.
+      const { error } = await sb.auth.resetPasswordForEmail(u.email, { redirectTo: `${cfg.siteUrl || window.location.origin}${import.meta.env.BASE_URL}reset-password/recovery` });
+      if (error) return fail(friendly(error));
+      await sb.rpc('admin_note_password_reset', { p_user: userId });
+      await refresh();
+      return ok(null);
+    },
     saveSettingsDraft: (s) => rpc('save_settings_draft', { p_data: s }),
     publishSettings: () => rpc('publish_settings', {}),
     discardSettingsDraft: () => rpc('discard_settings_draft', {}),

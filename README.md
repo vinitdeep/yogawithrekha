@@ -55,7 +55,9 @@ admin `admin@example.com` / `admin12345` (admin sign-in is at `/admin/login`). O
 | Paid lessons and videos | | only with **active** access (checked at that moment) | ✓ (preview) |
 | Mark complete / revisit completed lessons | | ✓ while access is active | |
 | Courses, lessons, videos, prices | | | ✓ |
-| Grant / extend / revoke / restore access (reason required) | | | ✓ |
+| Request access to a course (after paying directly) | | ✓ | |
+| Approve / decline access requests; grant / extend / revoke / restore access (reason required) | | | ✓ |
+| Send a student a password-reset email | | | ✓ |
 | Orders and complimentary-access records (read-only) | | | ✓ |
 | Website settings, FAQ, policies (draft → publish) | | | ✓ |
 | Audit history | | | ✓ |

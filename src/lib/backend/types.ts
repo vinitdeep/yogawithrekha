@@ -1,5 +1,5 @@
 import type { AppMode } from '../config';
-import type { AppState, Course, Currency, Enrollment, LessonVideo, Order, Settings, User } from '../types';
+import type { AccessRequest, AppState, Course, Currency, Enrollment, LessonVideo, Order, Settings, User } from '../types';
 import type { Result } from '../demo/engine';
 
 export type { Result };
@@ -52,6 +52,13 @@ export interface Backend {
   revokeAccess(enrollmentId: string, reason: string): Promise<Result>;
   restoreAccess(enrollmentId: string, reason: string): Promise<Result>;
   extendAccess(enrollmentId: string, months: number, reason: string): Promise<Result>;
+
+  /** Student: ask for access after paying directly. Admin approves or declines in Students. */
+  requestAccess(courseId: string, message: string): Promise<Result<AccessRequest>>;
+  cancelAccessRequest(requestId: string): Promise<Result>;
+  decideAccessRequest(requestId: string, approve: boolean, reason: string): Promise<Result>;
+  /** Admin: email the student a password-reset link. Demo returns the link token (no email is sent). */
+  sendPasswordReset(userId: string): Promise<Result<string | null>>;
 
   saveSettingsDraft(s: Settings): Promise<Result>;
   publishSettings(): Promise<Result>;

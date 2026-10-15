@@ -444,6 +444,10 @@ begin
   insert into public.enrollment_events (enrollment_id, action, actor_id, actor_email, reason)
   values (v_id, format('Complimentary access granted (%s months)', v_months), auth.uid(), (select email from public.profiles where id = auth.uid()), trim(p_reason));
   perform public._audit('access.grant', 'enrollment', v_id::text, format('Granted %s access to “%s”', v_email, v_title), trim(p_reason));
+  -- Granting closes any pending access request from this student for this course.
+  update public.access_requests set status = 'approved', decided_at = now(), decided_by = auth.uid(),
+    decided_by_email = (select email from public.profiles where id = auth.uid()), decision_reason = trim(p_reason), enrollment_id = v_id
+  where user_id = p_user and course_id = p_course and status = 'pending';
   return v_id;
 end $$;
 
@@ -647,6 +651,95 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Access requests (students who pay Rekha directly, e.g. UPI / bank transfer)
+-- ---------------------------------------------------------------------------
+
+create table public.access_requests (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null references public.profiles (id) on delete cascade,
+  course_id         uuid not null references public.courses (id) on delete restrict,
+  message           text not null default '' check (char_length(message) <= 500),
+  status            text not null default 'pending' check (status in ('pending', 'approved', 'declined', 'cancelled')),
+  created_at        timestamptz not null default now(),
+  decided_at        timestamptz,
+  decided_by        uuid,
+  decided_by_email  text,
+  decision_reason   text,
+  enrollment_id     uuid references public.enrollments (id)
+);
+-- One open request per student per course.
+create unique index access_requests_one_pending on public.access_requests (user_id, course_id) where status = 'pending';
+alter table public.access_requests enable row level security;
+revoke all on public.access_requests from anon, authenticated;
+grant select on public.access_requests to authenticated;
+create policy requests_read on public.access_requests for select to authenticated using (user_id = auth.uid() or public.is_admin());
+
+create or replace function public.request_access(p_course uuid, p_message text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_mode text;
+begin
+  if auth.uid() is null then raise exception 'not signed in' using errcode = '28000'; end if;
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'student') then
+    raise exception 'only student accounts can request access' using errcode = '42501';
+  end if;
+  select data ->> 'enrollmentMode' into v_mode from public.site_settings where id = 'published';
+  if v_mode = 'checkout' then raise exception 'access requests are not open' using errcode = '42501'; end if;
+  if not exists (select 1 from public.courses where id = p_course and status = 'published') then
+    raise exception 'this course is not available' using errcode = 'P0002';
+  end if;
+  -- Not 23505: that code is reserved for the duplicate-request check below.
+  if public.has_active_access(auth.uid(), p_course) then raise exception 'you already have access to this course' using errcode = 'P0001'; end if;
+  insert into public.access_requests (user_id, course_id, message) values (auth.uid(), p_course, left(trim(coalesce(p_message, '')), 500))
+  returning id into v_id;
+  return v_id;
+exception when unique_violation then
+  raise exception 'you have already requested access to this course' using errcode = '23505';
+end $$;
+
+create or replace function public.cancel_access_request(p_request uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.access_requests set status = 'cancelled', decided_at = now()
+  where id = p_request and user_id = auth.uid() and status = 'pending';
+  if not found then raise exception 'request not found or already answered' using errcode = 'P0002'; end if;
+end $$;
+
+create or replace function public.admin_decide_request(p_request uuid, p_approve boolean, p_reason text)
+returns void language plpgsql security definer set search_path = public as $$
+declare r public.access_requests; v_enr uuid; v_email text; v_title text;
+begin
+  perform public._require_admin();
+  if char_length(trim(coalesce(p_reason, ''))) < 4 then raise exception 'a reason is required' using errcode = '22023'; end if;
+  select * into r from public.access_requests where id = p_request for update;
+  if r.id is null then raise exception 'request not found' using errcode = 'P0002'; end if;
+  if r.status <> 'pending' then raise exception 'this request has already been answered' using errcode = '22023'; end if;
+  select p.email, c.title into v_email, v_title from public.profiles p, public.courses c where p.id = r.user_id and c.id = r.course_id;
+  if p_approve then
+    if not public.has_active_access(r.user_id, r.course_id) then
+      v_enr := public.admin_grant_access(r.user_id, r.course_id, p_reason);
+    end if;
+    update public.access_requests set status = 'approved', decided_at = now(), decided_by = auth.uid(),
+      decided_by_email = (select email from public.profiles where id = auth.uid()), decision_reason = trim(p_reason), enrollment_id = v_enr
+    where id = r.id;
+    perform public._audit('request.approve', 'enrollment', coalesce(v_enr::text, r.id::text), format('Approved %s’s request for “%s”', v_email, v_title), trim(p_reason));
+  else
+    update public.access_requests set status = 'declined', decided_at = now(), decided_by = auth.uid(),
+      decided_by_email = (select email from public.profiles where id = auth.uid()), decision_reason = trim(p_reason)
+    where id = r.id;
+    perform public._audit('request.decline', 'enrollment', r.id::text, format('Declined %s’s request for “%s”', v_email, v_title), trim(p_reason));
+  end if;
+end $$;
+
+-- Audit trail for admin-triggered password reset emails (the email itself is sent by Supabase Auth).
+create or replace function public.admin_note_password_reset(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform public._require_admin();
+  perform public._audit('user.password_reset_sent', 'user', p_user::text,
+    format('Sent a password reset email to %s', (select email from public.profiles where id = p_user)));
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Server-only functions (service role: Edge Functions). Never callable from a browser.
 -- ---------------------------------------------------------------------------
 
@@ -719,6 +812,10 @@ grant execute on function public.admin_delete_course(uuid) to authenticated;
 grant execute on function public.save_settings_draft(jsonb) to authenticated;
 grant execute on function public.publish_settings() to authenticated;
 grant execute on function public.discard_settings_draft() to authenticated;
+grant execute on function public.request_access(uuid, text) to authenticated;
+grant execute on function public.cancel_access_request(uuid) to authenticated;
+grant execute on function public.admin_decide_request(uuid, boolean, text) to authenticated;
+grant execute on function public.admin_note_password_reset(uuid) to authenticated;
 -- fulfil_order, fail_order, bootstrap_admin, _audit, _require_admin: service role / owner only.
 grant execute on function public.fulfil_order(uuid, text, int, text) to service_role;
 grant execute on function public.fail_order(uuid) to service_role;

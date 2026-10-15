@@ -1192,3 +1192,13 @@ span.error { color: var(--err); font-size: 0.85rem; display: inline-flex; gap: 6
 }
 
 .vl-current { color: var(--sage-deep); overflow-wrap: anywhere; }
+
+/* Admin: access requests + student sign-in box */
+.request-queue { margin-bottom: 20px; }
+.request-queue.has-items { border-color: #e7cf8f; background: #fffaf0; }
+.request-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.request-list li { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
+.rq-main { min-width: 0; flex: 1 1 280px; }
+.rq-message { margin-top: 4px; color: var(--ink-soft); font-style: italic; overflow-wrap: anywhere; }
+.nav-count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--rose); color: var(--forest); font: 700 0.75rem/22px var(--sans); text-align: center; }
+.pw-box { margin: 12px 0 4px; }

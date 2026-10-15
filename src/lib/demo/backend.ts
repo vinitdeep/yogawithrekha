@@ -124,6 +124,11 @@ export function createDemoBackend(): Backend {
     async restoreAccess(id, reason) { return run(E.restoreAccess(state, id, reason)); },
     async extendAccess(id, months, reason) { return run(E.extendAccess(state, id, months, reason)); },
 
+    async requestAccess(courseId, message) { await wait(300); return run(E.requestAccess(state, courseId, message)); },
+    async cancelAccessRequest(id) { return run(E.cancelAccessRequest(state, id)); },
+    async decideAccessRequest(id, approve, reason) { return run(E.decideAccessRequest(state, id, approve, reason)); },
+    async sendPasswordReset(userId) { await wait(300); return run(E.adminSendPasswordReset(state, userId)); },
+
     async saveSettingsDraft(s) { await wait(250); return run(E.saveSettingsDraft(state, s)); },
     async publishSettings() { await wait(250); return run(E.publishSettings(state)); },
     async discardSettingsDraft() { return run(E.discardSettingsDraft(state)); },

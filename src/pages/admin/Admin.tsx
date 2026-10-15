@@ -4,7 +4,7 @@ import { accessStatus, courseLessons, currentEnrollment, progressStats, useStore
 import { CURRENCIES, type AccessStatus, type Currency, type Enrollment, type OrderStatus, type RecordSource, type User } from '../../lib/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { Logo, formatMoney } from '../../components/brand';
-import { Dialog, Field, Notice, PasswordField, ProgressBar, ReasonDialog, emailOk, usePageTitle, useToast } from '../../components/ui';
+import { ConfirmDialog, Dialog, Field, Notice, PasswordField, ProgressBar, ReasonDialog, emailOk, usePageTitle, useToast } from '../../components/ui';
 import { DEMO_ACCOUNTS } from '../../lib/seed';
 import { IS_DEMO } from '../../lib/config';
 import { DemoControls } from '../../components/Layout';
@@ -21,7 +21,8 @@ const nav: { to: string; label: string; icon: IconName; end?: boolean }[] = [
 ];
 
 export function AdminLayout() {
-  const { user, logout, site } = useStore();
+  const { user, logout, site, state } = useStore();
+  const pendingRequests = state.accessRequests.filter((r) => r.status === 'pending').length;
   const go = useNavigate();
   return (
     <div className="admin-shell">
@@ -29,7 +30,9 @@ export function AdminLayout() {
         <Link to="/" className="brand"><Logo /><span><span className="brand-name">{site.brandName}</span><span className="brand-sub">Admin</span></span></Link>
         <nav aria-label="Admin sections">
           {nav.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className="nav"><Icon name={n.icon} size={18} />{n.label}</NavLink>
+            <NavLink key={n.to} to={n.to} end={n.end} className="nav"><Icon name={n.icon} size={18} />{n.label}
+              {n.to === '/admin/students' && pendingRequests > 0 && <span className="nav-count" aria-label={`${pendingRequests} access requests waiting`}>{pendingRequests}</span>}
+            </NavLink>
           ))}
           <Link to="/" className="nav"><Icon name="home" size={18} />View website</Link>
         </nav>
@@ -148,6 +151,11 @@ export function AdminOverview() {
         <div><h1>Overview</h1><p className="muted" style={{ margin: 0 }}>A snapshot of courses, students and orders.</p></div>
         <Link to="/admin/courses" className="btn btn-primary btn-sm"><Icon name="book" size={16} /> Manage courses</Link>
       </div>
+      {state.accessRequests.some((r) => r.status === 'pending') && (
+        <Notice kind="warn" title={`${state.accessRequests.filter((r) => r.status === 'pending').length} access request(s) waiting`}>
+          Students have asked for access after paying directly. <Link to="/admin/students">Review requests</Link>
+        </Notice>
+      )}
       {hasSample && <p className="small muted"><span className="badge badge-outline">Sample statistics</span> Figures include fictional sample records created for this demo.</p>}
       <div className="grid grid-4 stat-grid">
         <div className="stat"><div className="k">Students</div><div className="v">{students.length}</div>{hasSample && <div className="s">{students.filter((u) => u.source === 'sample').length} sample · {students.filter((u) => u.source !== 'sample').length} other</div>}</div>
@@ -208,7 +216,16 @@ export function AdminOverview() {
 
 /* ------------------------------ Students ------------------------------ */
 
-type StudentFilter = 'all' | 'active' | 'expired' | 'revoked' | 'none';
+type StudentFilter = 'all' | 'waiting' | 'active' | 'expired' | 'revoked' | 'none';
+
+/** Where a student stands, for the Status column. */
+function studentStatus(hasPendingRequest: boolean, ens: Enrollment[]) {
+  const sts = ens.map((e) => accessStatus(e));
+  if (hasPendingRequest) return { cls: 'badge-warn', label: 'Requested access', waiting: true };
+  if (sts.includes('active') || sts.includes('scheduled')) return { cls: 'badge-ok', label: 'Has access', waiting: false };
+  if (!ens.length) return { cls: 'badge-info', label: 'New · no access yet', waiting: true };
+  return { cls: 'badge-muted', label: 'Access ended', waiting: false };
+}
 
 export function AdminStudents() {
   const { state } = useStore();
@@ -216,7 +233,10 @@ export function AdminStudents() {
   const [filter, setFilter] = useState<StudentFilter>('all');
   const [courseFilter, setCourseFilter] = useState('all');
   const [openId, setOpenId] = useState<string | null>(null);
+  const [grantFor, setGrantFor] = useState<User | null>(null);
   usePageTitle('Students');
+
+  const pendingByUser = useMemo(() => new Set(state.accessRequests.filter((r) => r.status === 'pending').map((r) => r.userId)), [state.accessRequests]);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -226,10 +246,11 @@ export function AdminStudents() {
         const courseIds = [...new Set(state.enrollments.filter((e) => e.userId === u.id).map((e) => e.courseId))];
         // One effective enrollment per course
         const ens = courseIds.map((cid) => currentEnrollment(state.enrollments, u.id, cid)!).filter(Boolean);
-        return { u, ens };
+        return { u, ens, status: studentStatus(pendingByUser.has(u.id), ens) };
       })
-      .filter(({ u, ens }) => {
+      .filter(({ u, ens, status }) => {
         if (term && !`${u.name} ${u.email}`.toLowerCase().includes(term)) return false;
+        if (filter === 'waiting') return status.waiting;
         const scoped = courseFilter === 'all' ? ens : ens.filter((e) => e.courseId === courseFilter);
         if (courseFilter !== 'all' && !scoped.length && filter !== 'none') return false;
         const sts = scoped.map((e) => accessStatus(e));
@@ -238,15 +259,21 @@ export function AdminStudents() {
         if (filter === 'revoked') return sts.includes('revoked');
         if (filter === 'none') return scoped.length === 0;
         return true;
-      });
-  }, [state.users, state.enrollments, q, filter, courseFilter]);
+      })
+      // Newest sign-ups first, so new students are easy to spot.
+      .sort((a, b) => Number(b.status.waiting) - Number(a.status.waiting) || b.u.createdAt.localeCompare(a.u.createdAt));
+  }, [state.users, state.enrollments, pendingByUser, q, filter, courseFilter]);
 
   const open = state.users.find((u) => u.id === openId) ?? null;
   const clear = () => { setQ(''); setFilter('all'); setCourseFilter('all'); };
+  const waitingCount = state.users.filter((u) => u.role === 'student' && studentStatus(pendingByUser.has(u.id), state.enrollments.filter((e) => e.userId === u.id)).waiting).length;
 
   return (
     <>
-      <div className="admin-top"><div><h1>Students</h1><p className="muted" style={{ margin: 0 }}>Search students, review progress and manage access.</p></div></div>
+      <div className="admin-top">
+        <div><h1>Students</h1><p className="muted" style={{ margin: 0 }}>Everyone who signs up appears here automatically. Approve requests, grant access and review progress.</p></div>
+      </div>
+      <AccessRequestQueue />
       <div className="toolbar" role="search" aria-label="Filter students">
         <div className="field-inline">
           <label htmlFor="s-q">Search</label>
@@ -263,6 +290,7 @@ export function AdminStudents() {
           <label htmlFor="s-f">Access</label>
           <select id="s-f" className="select input-sm" value={filter} onChange={(e) => setFilter(e.target.value as StudentFilter)}>
             <option value="all">Any</option>
+            <option value="waiting">Waiting for access ({waitingCount})</option>
             <option value="active">Active</option>
             <option value="expired">Expired</option>
             <option value="revoked">Revoked</option>
@@ -276,18 +304,24 @@ export function AdminStudents() {
       ) : (
         <div className="table-wrap">
           <table className="table table-responsive">
-            <thead><tr><th scope="col">Student</th><th scope="col">Courses</th><th scope="col">Next access end</th><th scope="col">Record</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th scope="col">Student (login email)</th><th scope="col">Status</th><th scope="col">Signed up</th><th scope="col">Courses</th><th scope="col">Next access end</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
-              {rows.map(({ u, ens }) => {
+              {rows.map(({ u, ens, status }) => {
                 const act = ens.filter((e) => accessStatus(e) === 'active').sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
                 const ended = ens.length - act.length;
                 return (
                   <tr key={u.id}>
-                    <td data-label="Student"><strong>{u.name}</strong><br /><span className="muted small">{u.email}{u.country ? ` · ${u.country}` : ''}</span></td>
+                    <td data-label="Student"><strong>{u.name}</strong> <SourceBadge source={u.source} /><br /><span className="muted small">{u.email}{u.country ? ` · ${u.country}` : ''}</span></td>
+                    <td data-label="Status"><span className={`badge ${status.cls}`}>{status.label}</span></td>
+                    <td data-label="Signed up" style={{ whiteSpace: 'nowrap' }}>{formatShortDate(u.createdAt)}</td>
                     <td data-label="Courses">{act.length} active{ended > 0 && <span className="muted"> · {ended} ended/revoked</span>}</td>
                     <td data-label="Next access end">{act[0] ? formatAccessDate(act[0].expiresAt) : '—'}</td>
-                    <td data-label="Record"><SourceBadge source={u.source} />{u.source === 'live' && <span className="muted small">Real</span>}</td>
-                    <td className="num"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpenId(u.id)}>Manage<span className="sr-only"> {u.name}</span></button></td>
+                    <td className="num">
+                      <span className="row" style={{ gap: 8, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                        <button type="button" className={`btn ${status.waiting ? 'btn-primary' : 'btn-ghost'} btn-sm`} onClick={() => setGrantFor(u)}>Grant access<span className="sr-only"> to {u.name}</span></button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpenId(u.id)}>Manage<span className="sr-only"> {u.name}</span></button>
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
@@ -295,8 +329,101 @@ export function AdminStudents() {
           </table>
         </div>
       )}
+      <p className="muted small" style={{ marginTop: 14 }}>Passwords are never shown to anyone — not even admins. If a student can’t sign in, open <em>Manage</em> and send them a password reset email.</p>
       {open && <StudentDialog student={open} onClose={() => setOpenId(null)} />}
+      {grantFor && <QuickGrantDialog student={grantFor} onClose={() => setGrantFor(null)} />}
     </>
+  );
+}
+
+/** Pending "Request access" submissions, newest first, with Approve / Decline. */
+function AccessRequestQueue() {
+  const { state, decideAccessRequest } = useStore();
+  const toast = useToast();
+  const [deciding, setDeciding] = useState<{ id: string; approve: boolean } | null>(null);
+  const pending = state.accessRequests.filter((r) => r.status === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const req = deciding ? state.accessRequests.find((r) => r.id === deciding.id) : undefined;
+  const who = (id: string) => state.users.find((u) => u.id === id);
+  const course = (id: string) => state.courses.find((c) => c.id === id);
+
+  return (
+    <section className={`card card-sm request-queue ${pending.length ? 'has-items' : ''}`} aria-labelledby="rq-h">
+      <div className="row-between">
+        <h2 id="rq-h" style={{ fontSize: '1.15rem', margin: 0 }}>Access requests {pending.length > 0 && <span className="badge badge-warn">{pending.length} waiting</span>}</h2>
+        <span className="muted small">Students who paid directly and pressed “Request access”.</span>
+      </div>
+      {pending.length === 0 ? <p className="muted small" style={{ margin: '8px 0 0' }}>No requests waiting.</p> : (
+        <ul className="request-list">
+          {pending.map((r) => {
+            const u = who(r.userId);
+            const c = course(r.courseId);
+            return (
+              <li key={r.id}>
+                <div className="rq-main">
+                  <strong>{u?.name ?? 'Unknown student'}</strong> <span className="muted small">{u?.email}</span> <SourceBadge source={r.recordSource} />
+                  <div className="small">wants <strong>{c?.title ?? 'a course'}</strong> · {formatDateTime(r.createdAt)}</div>
+                  {r.message && <div className="rq-message small">“{r.message}”</div>}
+                </div>
+                <span className="row" style={{ gap: 8 }}>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setDeciding({ id: r.id, approve: true })}>Approve<span className="sr-only"> {u?.name}</span></button>
+                  <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => setDeciding({ id: r.id, approve: false })}>Decline<span className="sr-only"> {u?.name}</span></button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {/* Mounted per decision so the pre-filled reason is there from the first frame. */}
+      {deciding && <ReasonDialog
+        key={`${deciding.id}-${deciding.approve}`}
+        open onCancel={() => setDeciding(null)}
+        title={deciding?.approve ? 'Approve and grant access?' : 'Decline this request?'}
+        confirmLabel={deciding?.approve ? 'Approve & grant access' : 'Decline request'} danger={!deciding?.approve}
+        defaultReason={deciding?.approve ? 'Payment received — request approved' : ''}
+        message={req && <>{who(req.userId)?.name} ({who(req.userId)?.email}) — <strong>{course(req.courseId)?.title}</strong>.{' '}
+          {deciding?.approve ? <>They get {course(req.courseId)?.accessMonths}-month access starting now. No online order is created.</> : <>The student will see your reason on their dashboard.</>}</>}
+        onConfirm={async (reason) => {
+          if (!deciding) return null;
+          const r = await decideAccessRequest(deciding.id, deciding.approve, reason);
+          if (!r.ok) return r.error;
+          toast(deciding.approve ? 'Approved — the student can start learning now' : 'Request declined', deciding.approve ? 'ok' : 'info');
+          setDeciding(null);
+          return null;
+        }}
+      />}
+    </section>
+  );
+}
+
+/** One-click grant from the student list: choose a course, confirm (reason pre-filled, editable). */
+function QuickGrantDialog({ student, onClose }: { student: User; onClose: () => void }) {
+  const { state, grantAccess } = useStore();
+  const toast = useToast();
+  const options = state.courses.filter((c) => c.status !== 'archived' && !['active', 'scheduled'].includes(accessStatus(currentEnrollment(state.enrollments, student.id, c.id))));
+  const requested = state.accessRequests.find((r) => r.userId === student.id && r.status === 'pending');
+  const [courseId, setCourseId] = useState(requested?.courseId ?? options[0]?.id ?? '');
+  const c = state.courses.find((x) => x.id === courseId);
+  return (
+    <ReasonDialog open onCancel={onClose} title={`Grant access to ${student.name}`} confirmLabel="Grant access"
+      defaultReason="Access granted by admin"
+      message={options.length ? <>Login email: <strong>{student.email}</strong>. They get {c?.accessMonths ?? 6}-month access starting now. No payment or order is created.</> : <>{student.name} already has access to every available course.</>}
+      onConfirm={async (reason) => {
+        if (!courseId) return 'Choose a course.';
+        const r = await grantAccess(student.id, courseId, reason);
+        if (!r.ok) return r.error;
+        toast(`Access to “${c?.title}” granted to ${student.name}`);
+        onClose();
+        return null;
+      }}>
+      {options.length > 0 && (
+        <div className="field" style={{ marginBottom: 14 }}>
+          <label htmlFor="qg-course">Course</label>
+          <select id="qg-course" className="select" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+            {options.map((o) => <option key={o.id} value={o.id}>{o.title}{o.status === 'draft' ? ' (draft)' : ''}{requested?.courseId === o.id ? ' — requested' : ''}</option>)}
+          </select>
+        </div>
+      )}
+    </ReasonDialog>
   );
 }
 
@@ -336,7 +463,7 @@ function StudentDialog({ student, onClose }: { student: User; onClose: () => voi
   return (
     <Dialog open onClose={onClose} title={student.name} description={`${student.email}${student.country ? ` · ${student.country}` : ''} · joined ${formatShortDate(student.createdAt)}`} size="lg">
       {student.source === 'sample' && <Notice kind="demo">Fictional sample student.</Notice>}
-      <p className="muted small">Passwords are never visible to admins and can’t be edited here. Students reset their own password from the sign-in page.</p>
+      <PasswordResetBox student={student} />
       <h3 style={{ marginTop: 18 }}>Enrollments</h3>
       {ens.length === 0 && <p className="muted">No enrollments yet.</p>}
       <div className="stack">
@@ -405,6 +532,42 @@ function StudentDialog({ student, onClose }: { student: User; onClose: () => voi
         message={msg}
       />
     </Dialog>
+  );
+}
+
+/** Send a reset email instead of ever showing a password. */
+function PasswordResetBox({ student }: { student: User }) {
+  const { sendPasswordReset } = useStore();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [demoLink, setDemoLink] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <div className="card card-sm card-flat pw-box">
+      <div className="row-between">
+        <div>
+          <strong>Sign-in</strong>
+          <div className="small">Login email: <strong>{student.email}</strong></div>
+          <div className="muted small">Passwords are stored scrambled and are never visible — not even to admins.</div>
+        </div>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setConfirm(true)}>{busy ? 'Sending…' : 'Send password reset email'}</button>
+      </div>
+      {demoLink && IS_DEMO && (
+        <Notice kind="demo" title="Demo: no email is sent">In production {student.email} receives this link by email: <Link to={`/reset-password/${demoLink}`}>reset link</Link> (valid for one hour).</Notice>
+      )}
+      <ConfirmDialog open={confirm} title="Send a password reset email?" confirmLabel="Send email"
+        message={<>{student.email} will receive a link to choose a new password. Their current password keeps working until they change it.</>}
+        onCancel={() => setConfirm(false)}
+        onConfirm={async () => {
+          setConfirm(false);
+          setBusy(true);
+          const r = await sendPasswordReset(student.id);
+          setBusy(false);
+          if (!r.ok) { toast(r.error, 'err'); return; }
+          setDemoLink(r.data);
+          toast(`Password reset email sent to ${student.email}`);
+        }} />
+    </div>
   );
 }
 
@@ -537,7 +700,7 @@ export function AdminPayments() {
 
 /* ------------------------------ Audit history ------------------------------ */
 
-const AUDIT_GROUPS: Record<string, string> = { course: 'Courses', enrollment: 'Access', settings: 'Settings & policies', order: 'Payments', user: 'Roles', lesson: 'Lessons', demo: 'Demo' };
+const AUDIT_GROUPS: Record<string, string> = { course: 'Courses', enrollment: 'Access', settings: 'Settings & policies', order: 'Payments', user: 'Accounts', lesson: 'Lessons', demo: 'Demo' };
 
 export function AdminAudit() {
   const { state } = useStore();

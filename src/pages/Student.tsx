@@ -59,6 +59,8 @@ export function Dashboard() {
         </div>
       )}
 
+      <AccessRequests />
+
       <h2 style={{ fontSize: '1.5rem', marginTop: 32 }}>Your courses</h2>
       {rows.length === 0 ? (
         <div className="empty">
@@ -72,6 +74,38 @@ export function Dashboard() {
         Access dates follow {ACCESS_TZ_LABEL}: access ends at 11:59 pm IST on the date shown. Progress counts the lessons currently published in each course; if new lessons are added, your percentage updates to include them.
       </p>
     </div>
+  );
+}
+
+/** Pending and recently answered access requests for the signed-in student. */
+function AccessRequests() {
+  const { state, user, site, cancelAccessRequest } = useStore();
+  const toast = useToast();
+  if (!user) return null;
+  const mine = state.accessRequests
+    .filter((r) => r.userId === user.id && (r.status === 'pending' || r.status === 'declined'))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!mine.length) return null;
+  return (
+    <section aria-labelledby="req-h" style={{ marginTop: 28 }}>
+      <h2 id="req-h" style={{ fontSize: '1.25rem' }}>Access requests</h2>
+      <div className="stack">
+        {mine.map((r) => {
+          const c = state.courses.find((x) => x.id === r.courseId);
+          return r.status === 'pending' ? (
+            <Notice key={r.id} kind="info" title={`Waiting for approval: ${c?.title ?? 'course'}`}>
+              Requested on {formatAccessDate(r.createdAt)}. You’ll be able to start as soon as {site.displayName} confirms it.{' '}
+              <button type="button" className="link-btn small" onClick={async () => { const x = await cancelAccessRequest(r.id); toast(x.ok ? 'Request withdrawn' : x.error, x.ok ? 'info' : 'err'); }}>Withdraw request</button>
+            </Notice>
+          ) : (
+            <Notice key={r.id} kind="warn" title={`Request not approved: ${c?.title ?? 'course'}`}>
+              {r.decisionReason ? <>Note from {site.displayName}: “{r.decisionReason}”. </> : null}
+              Questions? <a href={`mailto:${site.supportEmail}`}>Contact support</a>.
+            </Notice>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

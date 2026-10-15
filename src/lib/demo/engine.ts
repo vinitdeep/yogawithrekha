@@ -1,5 +1,5 @@
 import type {
-  AppState, AuditEntry, Course, CourseProgress, Currency, Enrollment, Lesson, Order, Settings, User,
+  AccessRequest, AppState, AuditEntry, Course, CourseProgress, Currency, Enrollment, Lesson, Order, Settings, User,
 } from '../types';
 import { accessStatus, courseLessons, currentEnrollment, isLive, SLUG_RE } from '../access';
 import { computeExpiry } from '../dates';
@@ -362,9 +362,12 @@ export function grantAccess(s: AppState, userId: string, courseId: string, reaso
     source: 'admin-grant', grantReason: reason.trim(), recordSource: 'demo',
     history: [{ at: iso(now), action: `Complimentary access granted (${c.accessMonths} months)`, by: admin.data.email, reason: reason.trim() }],
   };
+  // Granting closes any pending request from this student for this course.
+  const accessRequests = s.accessRequests.map((r) => (r.userId === userId && r.courseId === courseId && r.status === 'pending'
+    ? { ...r, status: 'approved' as const, decidedAt: iso(now), decidedBy: admin.data.email, decisionReason: reason.trim(), enrollmentId: e.id } : r));
   return {
     state: {
-      ...s, enrollments: [...s.enrollments, e],
+      ...s, enrollments: [...s.enrollments, e], accessRequests,
       audit: audit(s, admin.data, now, { action: 'access.grant', entity: 'enrollment', entityId: e.id, summary: `Granted ${student.email} access to “${c.title}” until ${e.expiresAt.slice(0, 10)}`, reason: reason.trim() }),
       activity: activity(s, now, `Admin granted access to “${c.title}”`),
     },
@@ -474,6 +477,95 @@ export function publishSettings(s: AppState, now = new Date()): Step {
     log = audit({ ...s, audit: log }, admin.data, now, { action: 'policy.publish', entity: 'settings', entityId: k, summary: `Published ${after.policies[k].title}${after.policies[k].draft ? ' (still marked draft)' : ' (marked final)'}` });
   }
   return { state: { ...s, settings: after, settingsDraft: null, settingsPublishedAt: iso(now), audit: log }, result: ok(undefined) };
+}
+
+/* ------------------------------ access requests ------------------------------ */
+
+/** A student asks for access (they paid Rekha directly). One pending request per course. */
+export function requestAccess(s: AppState, courseId: string, message: string, now = new Date()): Step<AccessRequest> {
+  const me = requireUser(s, now);
+  if (!me.ok) return same(s, fail('Please sign in or create an account first.'));
+  if (me.data.role !== 'student') return same(s, fail('Admin accounts can’t request access. Use a student account.'));
+  if (s.settings.enrollmentMode === 'checkout') return same(s, fail('Access requests are not open. Please enroll through checkout.'));
+  const c = s.courses.find((x) => x.id === courseId);
+  if (!c || c.status !== 'published') return same(s, fail('This course is not available.'));
+  if (isLive(accessStatus(currentEnrollment(s.enrollments, me.data.id, courseId, now), now))) return same(s, fail('You already have access to this course.'));
+  if (s.accessRequests.some((r) => r.userId === me.data.id && r.courseId === courseId && r.status === 'pending')) {
+    return same(s, fail('You’ve already requested access to this course. Rekha will confirm it soon.'));
+  }
+  const msg = message.trim().slice(0, 500);
+  const req: AccessRequest = { id: uid('req'), userId: me.data.id, courseId, message: msg, status: 'pending', createdAt: iso(now), recordSource: 'demo' };
+  return {
+    state: { ...s, accessRequests: [req, ...s.accessRequests], activity: activity(s, now, `${me.data.name} requested access to “${c.title}”`) },
+    result: ok(req),
+  };
+}
+
+/** The student withdraws their own pending request. */
+export function cancelAccessRequest(s: AppState, requestId: string, now = new Date()): Step {
+  const me = requireUser(s, now);
+  if (!me.ok) return same(s, me);
+  const r = s.accessRequests.find((x) => x.id === requestId);
+  if (!r || r.userId !== me.data.id) return same(s, fail('Request not found.'));
+  if (r.status !== 'pending') return same(s, fail('This request has already been answered.'));
+  return { state: { ...s, accessRequests: s.accessRequests.map((x) => (x.id === requestId ? { ...x, status: 'cancelled' as const, decidedAt: iso(now) } : x)) }, result: ok(undefined) };
+}
+
+/** Admin approves (grants access, reason recorded) or declines (reason required) a request. */
+export function decideAccessRequest(s: AppState, requestId: string, approve: boolean, reason: string, now = new Date()): Step {
+  const admin = requireAdmin(s, now);
+  if (!admin.ok) return same(s, admin);
+  const r = s.accessRequests.find((x) => x.id === requestId);
+  if (!r) return same(s, fail('Request not found.'));
+  if (r.status !== 'pending') return same(s, fail('This request has already been answered.'));
+  if (!reasonOk(reason)) return same(s, fail('Please give a reason (at least 4 characters).'));
+  const student = s.users.find((u) => u.id === r.userId);
+  const c = s.courses.find((x) => x.id === r.courseId);
+  const decided = { decidedAt: iso(now), decidedBy: admin.data.email, decisionReason: reason.trim() };
+  if (!approve) {
+    return {
+      state: {
+        ...s,
+        accessRequests: s.accessRequests.map((x) => (x.id === requestId ? { ...x, ...decided, status: 'declined' as const } : x)),
+        audit: audit(s, admin.data, now, { action: 'request.decline', entity: 'enrollment', entityId: requestId, summary: `Declined ${student?.email ?? 'student'}’s request for “${c?.title ?? 'course'}”`, reason: reason.trim() }),
+      },
+      result: ok(undefined),
+    };
+  }
+  const g = grantAccess(s, r.userId, r.courseId, reason, now);
+  if (!g.result.ok) {
+    // Already has access: close the request rather than leave it hanging.
+    if (/already has active access/.test(g.result.error)) {
+      return {
+        state: { ...s, accessRequests: s.accessRequests.map((x) => (x.id === requestId ? { ...x, ...decided, status: 'approved' as const } : x)) },
+        result: ok(undefined),
+      };
+    }
+    return same(s, g.result);
+  }
+  const enr = g.result.data;
+  return {
+    state: {
+      ...g.state,
+      accessRequests: g.state.accessRequests.map((x) => (x.id === requestId ? { ...x, ...decided, status: 'approved' as const, enrollmentId: enr.id } : x)),
+      audit: audit(g.state, admin.data, now, { action: 'request.approve', entity: 'enrollment', entityId: enr.id, summary: `Approved ${student?.email ?? 'student'}’s request for “${c?.title ?? 'course'}”`, reason: reason.trim() }),
+    },
+    result: ok(undefined),
+  };
+}
+
+/** Admin sends a password-reset email to a student. Passwords themselves are never visible. */
+export function adminSendPasswordReset(s: AppState, userId: string, now = new Date()): Step<string | null> {
+  const admin = requireAdmin(s, now);
+  if (!admin.ok) return same(s, admin);
+  const u = s.users.find((x) => x.id === userId);
+  if (!u) return same(s, fail('Student not found.'));
+  if (!u.passwordHash) return same(s, fail('This is a fictional sample student, so no email can be sent.'));
+  const r = requestPasswordReset(s, u.email, now);
+  return {
+    state: { ...r.state, audit: audit(r.state, admin.data, now, { action: 'user.password_reset_sent', entity: 'user', entityId: u.id, summary: `Sent a password reset email to ${u.email}` }) },
+    result: r.result,
+  };
 }
 
 /* ------------------------------ misc ------------------------------ */

@@ -145,11 +145,11 @@ export function ConfirmDialog({ open, title, message, confirmLabel, danger, onCo
 }
 
 /** Confirmation for sensitive admin changes: a written reason is required and recorded in the audit history. */
-export function ReasonDialog({ open, title, message, confirmLabel, danger, onConfirm, onCancel }: Omit<ConfirmProps, 'onConfirm'> & { onConfirm: (reason: string) => Promise<string | null> | string | null }) {
-  const [reason, setReason] = useState('');
+export function ReasonDialog({ open, title, message, confirmLabel, danger, onConfirm, onCancel, defaultReason = '', children }: Omit<ConfirmProps, 'onConfirm'> & { onConfirm: (reason: string) => Promise<string | null> | string | null; defaultReason?: string; children?: ReactNode }) {
+  const [reason, setReason] = useState(defaultReason);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setReason(''); setError(''); } }, [open]);
+  useEffect(() => { if (open) { setReason(defaultReason); setError(''); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async () => {
     if (busy) return;
     if (reason.trim().length < 4) { setError('Please give a short reason (at least 4 characters). It is saved in the audit history.'); return; }
@@ -170,6 +170,7 @@ export function ReasonDialog({ open, title, message, confirmLabel, danger, onCon
       }
     >
       <div className="muted" style={{ marginBottom: 16 }}>{message}</div>
+      {children}
       <TextArea label="Reason" required value={reason} error={error} style={{ minHeight: 80 }}
         hint="For example: “Refund agreed by email on 3 March” or “Complimentary access for a workshop participant”."
         onChange={(e) => { setReason(e.target.value); if (error) setError(''); }} />

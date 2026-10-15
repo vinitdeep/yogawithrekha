@@ -284,6 +284,20 @@ export function AdminSettings() {
                 {errors.defaultCurrency && <span className="error">{errors.defaultCurrency}</span>}
               </div>
             </fieldset>
+            <div className="field">
+              <label htmlFor="enr-mode">How do students get access?</label>
+              <select id="enr-mode" className="select" value={s.enrollmentMode} onChange={(e) => set('enrollmentMode', e.target.value as Settings['enrollmentMode'])}>
+                <option value="both">Online checkout and “Request access” (pay Rekha directly)</option>
+                <option value="request">Only “Request access” — admin approves each student</option>
+                <option value="checkout">Only online checkout</option>
+              </select>
+              <span className="hint">With “Request access”, students send a request (e.g. after paying by UPI or bank transfer) and you approve it in Students.</span>
+            </div>
+            {s.enrollmentMode !== 'checkout' && (
+              <TextArea label="Instructions shown in the “Request access” window" value={s.requestInstructions} style={{ minHeight: 90 }}
+                hint="Explain how to pay and what to include in the message. Don’t put bank or UPI details here if you prefer to share them privately."
+                onChange={(e) => set('requestInstructions', e.target.value)} />
+            )}
             <Field label="Default access for new courses (calendar months)" type="number" min={1} max={36} value={s.defaultAccessMonths} error={err('defaultAccessMonths')}
               hint="Pre-fills new courses. Each course has its own setting, and existing enrollments are never changed." onChange={(e) => set('defaultAccessMonths', Number(e.target.value))} />
             <div className="field">

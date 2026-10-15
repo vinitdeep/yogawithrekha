@@ -14,7 +14,7 @@ import { computeExpiry, daysAgo } from './dates';
  *  - Prices are integers in minor units (paise / cents).
  */
 
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 7;
 
 /** Demo-only, non-cryptographic hash so plain passwords are not sitting in storage.
  *  Production must use a real auth provider; passwords never belong in the browser. */
@@ -346,6 +346,9 @@ function buildSettings(): Settings {
     displayCurrencies: ['INR', 'USD'],
     defaultAccessMonths: 6,
     accessStartRule: 'enrollment',
+    enrollmentMode: 'both',
+    requestInstructions:
+      'Paying directly? Send the course fee to Rekha by UPI or bank transfer (details are shared on request), then add your payment reference below. Your access starts as soon as Rekha confirms the payment.',
     launchDate: '2026-12-15',
     seo: {
       home: { title: '', description: 'Explore guided, prerecorded face yoga lessons with Rekha. Learn at your own pace with six months of course access.' },
@@ -466,5 +469,10 @@ export function createSeedState(): AppState {
     session: null,
     resetTokens: [],
     loginFailures: {},
+    // A sample pending request so the approval queue isn't empty in the demo.
+    accessRequests: [{
+      id: 'req-sample-1', userId: 'u-s5', courseId: 'c-morning', message: 'Paid by UPI on Sunday — reference UPI-SAMPLE-0001 (fictional).',
+      status: 'pending', createdAt: daysAgo(1), recordSource: 'sample',
+    }],
   };
 }

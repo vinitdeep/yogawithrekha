@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { accessStatus, courseLessons, courseMinutes, isLive, resumeLesson, usePublishedCourses, useStore } from '../lib/store';
 import { Icon } from '../components/Icon';
 import { CurrencyToggle, Portrait, Price, ProvisionalBadge, cutoutFor, useCurrency } from '../components/brand';
 import { CourseCard, Curriculum, FaqList } from '../components/course';
-import { Dialog, Notice, usePageTitle } from '../components/ui';
+import { Dialog, Notice, TextArea, usePageTitle, useToast } from '../components/ui';
+import type { Course } from '../lib/types';
 import { VideoPlayer, usePlayback } from '../components/VideoPlayer';
 import { formatAccessDate, formatAccessEnd } from '../lib/dates';
 import NotFound from './NotFound';
@@ -66,9 +67,16 @@ export function CourseDetail() {
   const s = site;
   const faqs = s.faqs.filter((f) => f.published && ['Six-month access', 'Prerecorded format', 'Login and lesson access', 'Payment questions'].includes(f.category)).slice(0, 5);
 
+  const mode = s.enrollmentMode ?? 'checkout';
+  const pending = user ? state.accessRequests.find((r) => r.userId === user.id && r.courseId === course.id && r.status === 'pending') : undefined;
+  const requestBtn = (primary: boolean) => (
+    <RequestAccessButton course={course} primary={primary} disabled={!!pending} />
+  );
   const action = live ? (
     <Link to={`/learn/${course.slug}/${resumeId}`} className="btn btn-primary btn-block">Continue learning</Link>
-  ) : (
+  ) : pending ? (
+    <button type="button" className="btn btn-secondary btn-block" disabled>Access requested — awaiting approval</button>
+  ) : mode === 'request' ? requestBtn(true) : (
     <Link to={`/checkout/${course.slug}`} className="btn btn-primary btn-block">{status === 'expired' ? 'Enroll again' : 'Enroll now'}</Link>
   );
 
@@ -172,7 +180,9 @@ export function CourseDetail() {
               ) : status === 'expired' && enr ? (
                 <Notice kind="warn" title="Your previous access has ended">Ended on {formatAccessDate(enr.expiresAt)}. You can enroll again below.</Notice>
               ) : null}
+              {pending && <Notice kind="info" title="Access requested">Sent on {formatAccessDate(pending.createdAt)}. You’ll be able to start as soon as {s.displayName} approves it.</Notice>}
               <div style={{ margin: '16px 0' }}>{action}</div>
+              {!live && !pending && mode === 'both' && <div style={{ margin: '-6px 0 16px' }}>{requestBtn(false)}</div>}
               <ul className="check-list small">
                 <li><Icon name="check" size={16} />{lessons.length} guided video lessons</li>
                 <li><Icon name="check" size={16} />{course.accessMonths} months of access</li>
@@ -200,6 +210,56 @@ export function CourseDetail() {
           <li><Icon name="check" size={18} />Mark lessons complete and track your progress</li>
           <li><Icon name="check" size={18} />Revisit completed lessons any time during your access</li>
         </ul>
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * "Request access" — for students who pay Rekha directly (UPI / bank transfer). The request goes to
+ * Admin → Students, where it is approved (access granted) or declined. Signed-out visitors are sent
+ * to sign in / register first and come back here.
+ */
+function RequestAccessButton({ course, primary, disabled }: { course: Course; primary: boolean; disabled?: boolean }) {
+  const { user, site, requestAccess } = useStore();
+  const nav = useNavigate();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const back = `/courses/${course.slug}`;
+
+  const start = () => {
+    if (!user) { nav(`/register?next=${encodeURIComponent(back)}`); return; }
+    setOpen(true);
+  };
+  const send = async () => {
+    if (busy) return;
+    setBusy(true);
+    const r = await requestAccess(course.id, message);
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    setOpen(false);
+    toast(`Request sent — ${site.displayName} will confirm your access soon`);
+  };
+
+  return (
+    <>
+      <button type="button" className={`btn ${primary ? 'btn-primary' : 'btn-secondary'} btn-block`} onClick={start} disabled={disabled}>
+        {primary ? 'Request access' : 'Paid directly? Request access'}
+      </button>
+      <Dialog open={open} onClose={() => setOpen(false)} title={`Request access: ${course.title}`}
+        description={`Signed in as ${user?.email ?? ''}`}
+        footer={<><button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={send} disabled={busy}>{busy ? 'Sending…' : 'Send request'}</button></>}>
+        <div className="form">
+          {site.requestInstructions && <p className="muted" style={{ margin: 0 }}>{site.requestInstructions}</p>}
+          <TextArea label="Message (optional)" value={message} maxLength={500} style={{ minHeight: 90 }}
+            hint="For example your UPI / bank reference and the date you paid. Please don’t include card numbers or passwords."
+            onChange={(e) => setMessage(e.target.value)} />
+          {error && <Notice kind="err">{error}</Notice>}
+          <p className="muted small" style={{ margin: 0 }}>Access starts once {site.displayName} approves your request. It then lasts {course.accessMonths} calendar months.</p>
+        </div>
       </Dialog>
     </>
   );

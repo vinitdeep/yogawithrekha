@@ -281,7 +281,7 @@ await test('16–18. Admin edits reach the right screens; drafts stay unpublishe
   await p.getByLabel('Search').fill('Sample Student B');
   check((await p.locator('tbody tr').count()) === 1, 'search by name');
   await p.getByLabel('Search').fill('');
-  await p.getByLabel('Access').selectOption('expired');
+  await p.locator('#s-f').selectOption('expired');
   const expiredRows = await p.locator('tbody tr').count();
   check(expiredRows >= 1, `expired filter returns rows (${expiredRows})`);
   // Orders filters + per-currency totals
@@ -386,6 +386,90 @@ await test('Admin controls the "Preview a lesson" video on the course page', asy
   check(await t.getByRole('heading', { name: 'Preview a lesson' }).count() === 0, 'preview hidden after unticking in admin');
   check((await t.locator('main').innerText()).includes('Course curriculum'), 'rest of the course page still shown');
   await t.close();
+  await p.context().close();
+});
+
+await test('Sign-up → appears in admin → Request access → admin approves → student can watch', async () => {
+  const p = await newPage();
+  const email = `request.${Date.now()}@example.com`;
+  // 1. New student signs up from a course page's "Request access"
+  await go(p, '/courses/morning-glow-ritual');
+  await p.locator('.detail-aside').getByRole('button', { name: /Request access/ }).click();
+  await p.waitForURL(/\/register\?next=/);
+  await p.getByLabel('Full name').fill('Request Student');
+  await p.getByLabel('Email address').fill(email);
+  await p.getByLabel('Create a password').fill('testpass123');
+  await p.getByLabel('Confirm password').fill('testpass123');
+  await p.getByRole('button', { name: 'Create account' }).click();
+  await p.waitForURL('**/courses/morning-glow-ritual');
+  check(true, 'after sign-up the student returns to the course page');
+  // 2. Paid lesson is locked until approval
+  await go(p, '/learn/morning-glow-ritual/l-12');
+  check((await text(p)).includes('This lesson is part of'), 'paid lesson locked before approval');
+  // 3. Request access
+  await go(p, '/courses/morning-glow-ritual');
+  await p.locator('.detail-aside').getByRole('button', { name: /Request access/ }).click();
+  const dlg = p.getByRole('dialog', { name: /Request access/ });
+  await dlg.getByLabel(/Message/).fill('Paid by UPI, ref TEST-1');
+  await dlg.getByRole('button', { name: 'Send request' }).click();
+  await dlg.waitFor({ state: 'detached' });
+  check(await p.locator('.detail-aside').getByText('Access requested').count() >= 1, 'course page shows the request is waiting');
+  await go(p, '/dashboard');
+  check((await text(p)).includes('Waiting for approval: Morning Glow Ritual'), 'dashboard shows the waiting request');
+  await p.getByRole('button', { name: 'Sign out' }).first().click();
+
+  // 4. Admin sees the new student automatically, with status, and the request in the queue
+  await login(p, 'admin@example.com', 'admin12345', '/admin/login');
+  await p.waitForURL('**/admin');
+  check((await text(p)).includes('access request(s) waiting'), 'overview flags waiting requests');
+  await go(p, '/admin/students');
+  check(await p.locator('.nav-count').innerText() === '2', 'Students nav shows 2 waiting (sample + new)');
+  const row = p.locator('tbody tr', { hasText: email });
+  check(await row.count() === 1, 'new sign-up listed automatically with their login email');
+  check((await row.innerText()).includes('Requested access'), 'status badge: Requested access');
+  check(!(await p.locator('main').innerText()).includes('testpass123'), 'password is never shown');
+  await p.locator('#s-f').selectOption('waiting');
+  check(await p.locator('tbody tr', { hasText: email }).count() === 1, '"Waiting for access" filter includes the new student');
+  // 5. Approve from the queue (reason pre-filled)
+  const item = p.locator('.request-list li', { hasText: email });
+  await item.getByRole('button', { name: /^Approve/ }).click();
+  const confirm = p.getByRole('dialog', { name: 'Approve and grant access?' });
+  check((await confirm.getByLabel('Reason').inputValue()).length > 4, 'approval reason is pre-filled');
+  await confirm.getByRole('button', { name: 'Approve & grant access' }).click();
+  await confirm.waitFor({ state: 'detached' });
+  check(await p.locator('.request-list li', { hasText: email }).count() === 0, 'request leaves the queue');
+  // 6. Password reset email from Manage
+  await p.locator('#s-f').selectOption('all');
+  await p.locator('tbody tr', { hasText: email }).getByRole('button', { name: /^Manage/ }).click();
+  await p.getByRole('button', { name: 'Send password reset email' }).click();
+  await p.getByRole('dialog', { name: 'Send a password reset email?' }).getByRole('button', { name: 'Send email' }).click();
+  await p.getByText('Demo: no email is sent').waitFor();
+  check(true, 'admin can send a password reset email (demo shows the link)');
+  await p.keyboard.press('Escape');
+  await p.getByRole('button', { name: 'Sign out' }).click();
+
+  // 7. Student can now watch
+  await login(p, email, 'testpass123');
+  await p.waitForURL('**/dashboard');
+  check((await text(p)).includes('Morning Glow Ritual') && (await text(p)).includes('Active'), 'course appears as active on the dashboard');
+  await go(p, '/learn/morning-glow-ritual/l-12');
+  check(await p.locator('.player-protected iframe').count() === 1, 'paid lesson video now plays');
+  await p.context().close();
+});
+
+await test('One-click Grant access from the student list', async () => {
+  const p = await newPage();
+  await login(p, 'admin@example.com', 'admin12345', '/admin/login');
+  await p.waitForURL('**/admin');
+  await go(p, '/admin/students');
+  const row = p.locator('tbody tr', { hasText: 'sample.e@example.com' });
+  await row.getByRole('button', { name: /^Grant access/ }).click();
+  const dlg = p.getByRole('dialog', { name: /Grant access to Sample Student E/ });
+  check((await dlg.getByLabel('Course').inputValue()) === 'c-morning', 'the requested course is pre-selected');
+  await dlg.getByRole('button', { name: 'Grant access' }).click();
+  await dlg.waitFor({ state: 'detached' });
+  check((await p.locator('tbody tr', { hasText: 'sample.e@example.com' }).innerText()).includes('Has access'), 'status changes to Has access');
+  check(await p.locator('.request-list li', { hasText: 'sample.e@example.com' }).count() === 0, 'their pending request is closed too');
   await p.context().close();
 });
 

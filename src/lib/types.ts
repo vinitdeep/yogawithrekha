@@ -227,11 +227,40 @@ export interface Settings {
   displayCurrencies: Currency[];
   defaultAccessMonths: number;
   accessStartRule: 'enrollment' | 'launch-date';
+  /**
+   * How students get access:
+   *  'checkout' — online payment only
+   *  'request'  — students pay Rekha directly (e.g. UPI / bank transfer) and press "Request access";
+   *               an admin approves each request
+   *  'both'     — both buttons are offered
+   */
+  enrollmentMode: 'checkout' | 'request' | 'both';
+  /** Shown to students in the "Request access" window, e.g. how to pay. */
+  requestInstructions: string;
   launchDate: string;
 
   seo: Record<PageKey, SeoEntry>;
   faqs: FaqItem[];
   policies: Record<'privacy' | 'terms' | 'refund', PolicyDoc>;
+}
+
+export type AccessRequestStatus = 'pending' | 'approved' | 'declined' | 'cancelled';
+
+/** A student asking for access to a course (manual / offline payment flow). */
+export interface AccessRequest {
+  id: string;
+  userId: string;
+  courseId: string;
+  /** Optional note from the student, e.g. a UPI reference. */
+  message: string;
+  status: AccessRequestStatus;
+  createdAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  /** Admin's reason (required when declining). */
+  decisionReason?: string;
+  enrollmentId?: string;
+  recordSource: RecordSource;
 }
 
 export interface ResetToken {
@@ -265,6 +294,7 @@ export interface AppState {
   resetTokens: ResetToken[];
   /** Demo login throttle: email → failed attempt timestamps. */
   loginFailures: Record<string, number[]>;
+  accessRequests: AccessRequest[];
 }
 
 /** @deprecated kept for readability in older notes — use AppState. */
