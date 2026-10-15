@@ -1145,3 +1145,31 @@ span.error { color: var(--err); font-size: 0.85rem; display: inline-flex; gap: 6
 /* Fields in a row keep their natural height (a neighbour's hint text must not stretch the input). */
 .form-row { align-items: start; }
 .form-row > .field { align-content: start; }
+
+/* Protected lesson player (YouTube / Drive / direct video) */
+.player-protected { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.player-protected.is-full { border-radius: 0; aspect-ratio: auto; width: 100vw; height: 100vh; background: #000; }
+/* Transparent covers over the links that open the video outside the site */
+.player-shield { position: absolute; z-index: 2; background: transparent; }
+.player-shield-top { top: 0; left: 0; right: 0; height: 64px; }
+.player-shield-drive { top: 0; right: 0; width: 80px; height: 80px; }
+.player-shield-ytlogo { right: 0; bottom: 0; width: 110px; height: 48px; }
+/* Before playback: the "Watch on YouTube" pill (bottom-right) and copy-link button (bottom-left) */
+.player-shield-watchon { right: 0; bottom: 0; width: min(260px, 45%); height: 90px; }
+.player-shield-copylink { left: 0; bottom: 0; width: 90px; height: 90px; }
+/* Moving watermark: visible in any screen recording, never blocks clicks */
+.player-watermark { position: absolute; z-index: 3; pointer-events: none; font: 600 clamp(0.7rem, 0.6rem + 0.4vw, 0.95rem) var(--sans); color: rgba(255, 255, 255, 0.55); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); letter-spacing: 0.02em; transition: top 1.2s var(--ease), left 1.2s var(--ease), right 1.2s var(--ease), bottom 1.2s var(--ease); white-space: nowrap; }
+.wm-0 { top: 18%; left: 6%; }
+.wm-1 { top: 42%; left: 55%; }
+.wm-2 { top: 68%; left: 10%; }
+.wm-3 { top: 26%; left: 48%; }
+.player-fs { position: absolute; z-index: 4; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 10px; border: 0; display: grid; place-items: center; background: rgba(15, 21, 17, 0.6); color: #fff; cursor: pointer; }
+.player-fs:hover { background: rgba(15, 21, 17, 0.85); }
+.player-fs:focus-visible { outline: 2.5px solid var(--rose); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .player-watermark { transition: none; } }
+
+/* Admin: video source tabs + live preview */
+.tabs-compact { margin-bottom: 14px; }
+.tabs-compact button { padding: 8px 12px; min-height: 40px; font-size: 0.9rem; }
+.video-preview { position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-sm); overflow: hidden; background: #111; max-width: 520px; }
+.video-preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }

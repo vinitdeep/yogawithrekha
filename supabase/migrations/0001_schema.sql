@@ -141,8 +141,9 @@ create index on public.lessons (course_id);
 -- curriculum so the course page can list lessons without exposing them.
 create table public.lesson_media (
   lesson_id      uuid primary key references public.lessons (id) on delete cascade,
-  video_kind     text check (video_kind in ('url', 'storage')),
-  video_ref      text,             -- storage object path in the private `lesson-videos` bucket, or a URL
+  video_kind     text check (video_kind in ('url', 'storage', 'youtube', 'gdrive')),
+  video_ref      text,             -- storage path in the private `lesson-videos` bucket, a URL, or a YouTube / Drive ID
+  check (video_kind not in ('youtube', 'gdrive') or video_ref ~ '^[A-Za-z0-9_-]{11,}$'),
   video_file     text,
   captions_url   text,
   transcript     text,

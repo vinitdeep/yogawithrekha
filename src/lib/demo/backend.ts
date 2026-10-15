@@ -2,6 +2,7 @@ import type { Backend, PaymentSession } from '../backend/types';
 import type { AppState, LessonVideo } from '../types';
 import { STATE_VERSION, createSeedState } from '../seed';
 import { sessionUploads } from '../uploads';
+import { driveEmbed, youTubeEmbed } from '../videoLinks';
 import * as E from './engine';
 import { ok, fail } from './engine';
 
@@ -94,6 +95,8 @@ export function createDemoBackend(): Backend {
       const v = lesson?.video;
       if (!v) return ok(null);
       if (v.kind === 'url') return ok(v.src);
+      if (v.kind === 'youtube') return ok(youTubeEmbed(v.src));
+      if (v.kind === 'gdrive') return ok(driveEmbed(v.src));
       if (v.kind === 'upload') return ok(sessionUploads.get(lessonId) ?? null);
       return ok(null);
     },

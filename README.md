@@ -77,8 +77,8 @@ page titles and SEO descriptions for Home, Courses, About, FAQ, Contact.
 
 Per course: title (+ provisional flag), slug, short description, overview, audience, topics, image + alt,
 prices per currency (stored in paise/cents), sample-price flag, access months for new enrollments,
-Draft/Published/Archived, modules and lessons (order, duration, published, free preview, video,
-captions link, transcript).
+Draft/Published/Archived, modules and lessons (order, duration, published, free preview, video from
+**YouTube (unlisted), Google Drive, file upload or another link**, captions link, transcript).
 
 ## Where things live
 

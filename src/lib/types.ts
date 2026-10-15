@@ -23,8 +23,10 @@ export interface LessonVideo {
    * 'upload'  — demo only: a file kept in memory for the browser session it was chosen in
    * 'storage' — production: an object in the private `lesson-videos` bucket; playback needs a
    *             short-lived signed URL from the `lesson-playback` function
+   * 'youtube' — an UNLISTED YouTube video; `src` is the 11-character video ID
+   * 'gdrive'  — a Google Drive file shared "anyone with the link"; `src` is the file ID
    */
-  kind: 'url' | 'upload' | 'storage';
+  kind: 'url' | 'upload' | 'storage' | 'youtube' | 'gdrive';
   src: string;
   fileName?: string;
   attachedAt: string;

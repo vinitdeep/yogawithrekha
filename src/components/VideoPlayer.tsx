@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { Lesson } from '../lib/types';
 import { useStore } from '../lib/store';
 import { IS_DEMO } from '../lib/config';
 import { Icon } from './Icon';
+import { isDriveEmbed, isYouTubeEmbed } from '../lib/videoLinks';
 
 /**
  * Lesson video.
@@ -31,20 +32,7 @@ export function VideoPlayer({ lesson, src, loading, label }: { lesson: Lesson; s
     return <div className="player"><div className="player-ph" role="status"><span className="spinner" aria-hidden="true" /><p>Loading video…</p></div></div>;
   }
 
-  if (src) {
-    const direct = /\.(mp4|webm|ogg|m4v|mov)(\?|$)/i.test(src) || src.startsWith('blob:') || /\/storage\/v1\/object\/sign\//.test(src);
-    return (
-      <div className="player">
-        {direct ? (
-          <video key={src} src={src} controls playsInline preload="metadata" controlsList="nodownload" aria-label={`Video: ${lesson.title}`} crossOrigin={lesson.captionsUrl ? 'anonymous' : undefined}>
-            {lesson.captionsUrl && <track kind="captions" src={lesson.captionsUrl} srcLang="en" label="English" default />}
-          </video>
-        ) : (
-          <iframe key={src} src={src} title={`Video: ${lesson.title}`} allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen />
-        )}
-      </div>
-    );
-  }
+  if (src) return <ProtectedPlayer lesson={lesson} src={src} />;
 
   const total = lesson.durationMin * 60;
   const elapsed = Math.round((pos / 100) * total);
@@ -89,4 +77,76 @@ export function usePlayback(courseId: string | undefined, lesson: Lesson | undef
     return () => { live = false; };
   }, [courseId, lesson?.id, lesson?.video?.src]); // eslint-disable-line react-hooks/exhaustive-deps
   return { src: res?.id === lesson?.id ? res?.url : undefined, loading: !res || res.id !== lesson?.id };
+}
+
+/**
+ * Player wrapper with copy deterrents. It CANNOT stop screen recording (no browser lets a page
+ * detect or block that) or guarantee a determined person can't obtain the file. It:
+ *  - overlays a slowly moving watermark with the viewer's email + date, so recordings are traceable;
+ *  - covers the YouTube title/share/"Watch on YouTube" links and Drive's "open in new window" button,
+ *    so the video can't be opened outside the site from the player;
+ *  - blocks the right-click menu and the native download / picture-in-picture controls;
+ *  - keeps fullscreen inside this wrapper (embed fullscreen is disabled) so the watermark stays visible.
+ */
+function ProtectedPlayer({ lesson, src }: { lesson: Lesson; src: string }) {
+  const { user } = useStore();
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState(0);
+  const [isFull, setIsFull] = useState(false);
+  const [started, setStarted] = useState(false);
+  const youtube = isYouTubeEmbed(src);
+  const drive = isDriveEmbed(src);
+  const direct = !youtube && !drive && (/\.(mp4|webm|ogg|m4v|mov)(\?|$)/i.test(src) || src.startsWith('blob:') || /\/storage\/v1\/object\/sign\//.test(src));
+
+  // Move the watermark every 7 seconds so it can't simply be cropped out.
+  useEffect(() => {
+    const t = window.setInterval(() => setPos((p) => (p + 1) % 4), 7000);
+    return () => window.clearInterval(t);
+  }, []);
+  // Clicking into the embed moves focus into the iframe: treat that as "playback started" and shrink
+  // the covers so YouTube's own controls (play, volume, captions) stay usable.
+  useEffect(() => {
+    setStarted(false);
+    const on = () => window.setTimeout(() => { if (document.activeElement?.tagName === 'IFRAME' && box.current?.contains(document.activeElement)) setStarted(true); }, 0);
+    window.addEventListener('blur', on);
+    return () => window.removeEventListener('blur', on);
+  }, [src]);
+  useEffect(() => {
+    const on = () => setIsFull(document.fullscreenElement === box.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void box.current?.requestFullscreen?.();
+  };
+  const block = (e: MouseEvent) => e.preventDefault();
+  const stamp = `${user?.email ?? 'Preview'} · ${new Date().toLocaleDateString('en-IN')}`;
+
+  return (
+    <div ref={box} className={`player player-protected ${isFull ? 'is-full' : ''}`} onContextMenu={block} onDragStart={block}>
+      {direct ? (
+        <video key={src} src={src} controls playsInline preload="metadata" controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
+          disablePictureInPicture disableRemotePlayback aria-label={`Video: ${lesson.title}`} crossOrigin={lesson.captionsUrl ? 'anonymous' : undefined}>
+          {lesson.captionsUrl && <track kind="captions" src={lesson.captionsUrl} srcLang="en" label="English" default />}
+        </video>
+      ) : (
+        // No allowFullScreen: fullscreen goes through our button so the watermark stays on top.
+        <iframe key={src} src={src} title={`Video: ${lesson.title}`} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" />
+      )}
+      {/* Shields over the links that would open the video outside this site */}
+      {(youtube || drive) && <span className="player-shield player-shield-top" aria-hidden="true" />}
+      {drive && <span className="player-shield player-shield-drive" aria-hidden="true" />}
+      {youtube && <span className="player-shield player-shield-ytlogo" aria-hidden="true" />}
+      {youtube && !started && <span className="player-shield player-shield-watchon" aria-hidden="true" />}
+      {youtube && !started && <span className="player-shield player-shield-copylink" aria-hidden="true" />}
+      <span className={`player-watermark wm-${pos}`} aria-hidden="true">{stamp}</span>
+      <button type="button" className="player-fs" onClick={toggleFull} aria-label={isFull ? 'Exit full screen' : 'Full screen'}>
+        {isFull
+          ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" /></svg>
+          : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" /></svg>}
+      </button>
+    </div>
+  );
 }

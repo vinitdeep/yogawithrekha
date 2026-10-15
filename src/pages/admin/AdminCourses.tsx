@@ -9,6 +9,8 @@ import { validateCourse } from '../../lib/demo/engine';
 import { CURRENCY_NAME, parseMajor, toMajorString } from '../../lib/money';
 import { IS_DEMO, PRODUCTION_CONFIG } from '../../lib/config';
 import { sessionUploads } from '../../lib/uploads';
+import { driveEmbed, parseDrive, parseYouTube, youTubeEmbed } from '../../lib/videoLinks';
+import type { LessonVideo } from '../../lib/types';
 import { formatShortDate } from '../../lib/dates';
 
 const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `id-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
@@ -323,7 +325,7 @@ export function AdminCourseEditor() {
                       <span className="muted small">{l.durationMin} min</span>
                       {l.published ? <span className="badge badge-ok">Published</span> : <span className="badge badge-muted">Unpublished</span>}
                       {l.preview && <span className="badge badge-sage">Free preview</span>}
-                      {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {l.video.kind === 'upload' ? 'Demo upload' : l.video.kind === 'storage' ? 'Protected video' : 'Video link'}</span> : <span className="badge badge-warn">No video yet</span>}
+                      {l.video ? <span className="badge badge-info"><Icon name="video" size={12} /> {{ upload: 'Demo upload', storage: 'Protected video', youtube: 'YouTube', gdrive: 'Google Drive', url: 'Video link' }[l.video.kind]}</span> : <span className="badge badge-warn">No video yet</span>}
                       {l.captionsUrl && <span className="badge badge-muted">Captions</span>}
                       {l.transcript && <span className="badge badge-muted">Transcript</span>}
                     </span>
@@ -392,6 +394,10 @@ function LessonDialog({ lesson, isNew, coursePublished, completions, activeStude
   const [l, setL] = useState<Lesson>(lesson);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [videoUrl, setVideoUrl] = useState(lesson.video?.kind === 'url' ? lesson.video.src : '');
+  type Source = 'youtube' | 'gdrive' | 'upload' | 'url';
+  const [source, setSource] = useState<Source>(lesson.video?.kind === 'gdrive' ? 'gdrive' : lesson.video?.kind === 'url' ? 'url' : lesson.video?.kind === 'upload' || lesson.video?.kind === 'storage' ? 'upload' : 'youtube');
+  const [ytLink, setYtLink] = useState(lesson.video?.kind === 'youtube' ? `https://youtu.be/${lesson.video.src}` : '');
+  const [driveLink, setDriveLink] = useState(lesson.video?.kind === 'gdrive' ? `https://drive.google.com/file/d/${lesson.video.src}/view` : '');
   const [upload, setUpload] = useState<{ name: string; pct: number } | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [lastFile, setLastFile] = useState<File | null>(null);
@@ -409,6 +415,19 @@ function LessonDialog({ lesson, isNew, coursePublished, completions, activeStude
     if (!/^https:\/\/[^\s]+$/.test(v)) { setErrors({ ...errors, video: 'Enter a full https:// link from your video host.' }); return; }
     setErrors({ ...errors, video: '' });
     guard(() => setL((cur) => ({ ...cur, video: { kind: 'url', src: v, attachedAt: new Date().toISOString() } })));
+  };
+
+  const attachId = (kind: 'youtube' | 'gdrive') => {
+    const id = kind === 'youtube' ? parseYouTube(ytLink) : parseDrive(driveLink);
+    if (!id) {
+      setErrors({ ...errors, [kind]: kind === 'youtube'
+        ? 'That doesn’t look like a YouTube video link. Paste the link from Share, e.g. https://youtu.be/abc123XYZ_0'
+        : 'That doesn’t look like a Google Drive file link. Use Share → Copy link, e.g. https://drive.google.com/file/d/…/view' });
+      return;
+    }
+    setErrors({ ...errors, [kind]: '' });
+    const video: LessonVideo = { kind, src: id, attachedAt: new Date().toISOString() };
+    guard(() => setL((cur) => ({ ...cur, video })));
   };
 
   const startUpload = async (f: File) => {
@@ -464,18 +483,51 @@ function LessonDialog({ lesson, isNew, coursePublished, completions, activeStude
             <div className="notice notice-ok" style={{ marginBottom: 14 }}>
               <Icon name="video" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <strong>{l.video.kind === 'url' ? 'Video link attached' : l.video.kind === 'storage' ? `Protected video: ${l.video.fileName ?? 'uploaded file'}` : `Demo upload: ${l.video.fileName}`}</strong>
-                <div className="small" style={{ wordBreak: 'break-all' }}>{l.video.kind === 'url' ? l.video.src : l.video.kind === 'storage' ? 'Stored privately; students get a short-lived link only while their access is active.' : 'Simulated: plays only in this browser session.'}</div>
+                <strong>{{ url: 'Video link attached', youtube: 'YouTube video attached', gdrive: 'Google Drive video attached', storage: `Protected video: ${l.video.fileName ?? 'uploaded file'}`, upload: `Demo upload: ${l.video.fileName}` }[l.video.kind]}</strong>
+                <div className="small" style={{ wordBreak: 'break-all' }}>{{
+                  url: l.video.src,
+                  youtube: `Video ID ${l.video.src} — plays inside the site’s protected player.`,
+                  gdrive: `File ID ${l.video.src} — plays inside the site’s protected player.`,
+                  storage: 'Stored privately; students get a short-lived link only while their access is active.',
+                  upload: 'Simulated: plays only in this browser session.',
+                }[l.video.kind]}</div>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => guard(() => { setL((cur) => ({ ...cur, video: undefined })); sessionUploads.delete(l.id); })}>Remove</button>
             </div>
           ) : <p className="muted small" style={{ marginTop: 0 }}>No video attached yet. Students will see a “video coming soon” placeholder.</p>}
           {live && <Notice kind="warn">This lesson is published{activeStudents ? ` and ${activeStudents} student(s) have active access` : ''}. Replacing or removing its video takes effect for students when you save the course.</Notice>}
 
-          <div style={{ marginTop: 14 }}>
-            <span className="label" style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Upload a video file {IS_DEMO ? <span className="badge badge-info">Simulated</span> : hostingReady ? <span className="badge badge-ok">Protected storage</span> : <span className="badge badge-muted">Not configured</span>}
-            </span>
+          <div className="tabs tabs-compact" role="tablist" aria-label="Video source" style={{ marginTop: 14 }}>
+            {([['youtube', 'YouTube (unlisted)'], ['gdrive', 'Google Drive'], ['upload', 'Upload file'], ['url', 'Other link']] as [Source, string][]).map(([k, label]) => (
+              <button key={k} type="button" role="tab" id={`vs-${k}`} aria-selected={source === k} aria-controls="vs-panel" onClick={() => setSource(k)}>{label}</button>
+            ))}
+          </div>
+          <div id="vs-panel" role="tabpanel" aria-labelledby={`vs-${source}`}>
+            {source === 'youtube' && (
+              <div className="stack">
+                <div className="form-row" style={{ alignItems: 'end' }}>
+                  <Field label="YouTube link" placeholder="https://youtu.be/…" value={ytLink} error={errors.youtube} onChange={(e) => setYtLink(e.target.value)} />
+                  <div><button type="button" className="btn btn-secondary" onClick={() => attachId('youtube')}>{l.video?.kind === 'youtube' ? 'Replace video' : 'Attach video'}</button></div>
+                </div>
+                <p className="muted small" style={{ margin: 0 }}>In YouTube Studio set the video to <strong>Unlisted</strong> (not Private — private videos can’t play on other sites) and keep <strong>Allow embedding</strong> on.</p>
+                {parseYouTube(ytLink) && <div className="video-preview"><iframe src={youTubeEmbed(parseYouTube(ytLink)!)} title="YouTube preview" allow="encrypted-media" /></div>}
+              </div>
+            )}
+            {source === 'gdrive' && (
+              <div className="stack">
+                <div className="form-row" style={{ alignItems: 'end' }}>
+                  <Field label="Google Drive link" placeholder="https://drive.google.com/file/d/…/view" value={driveLink} error={errors.gdrive} onChange={(e) => setDriveLink(e.target.value)} />
+                  <div><button type="button" className="btn btn-secondary" onClick={() => attachId('gdrive')}>{l.video?.kind === 'gdrive' ? 'Replace video' : 'Attach video'}</button></div>
+                </div>
+                <p className="muted small" style={{ margin: 0 }}>In Drive: <strong>Share → General access → Anyone with the link → Viewer</strong>, then in Share settings (⚙) untick <strong>“Viewers and commenters can see the option to download, print and copy”</strong>. Large videos can take a while to process before they play.</p>
+                {parseDrive(driveLink) && <div className="video-preview"><iframe src={driveEmbed(parseDrive(driveLink)!)} title="Google Drive preview" allow="encrypted-media" /></div>}
+              </div>
+            )}
+            {source === 'upload' && (
+              <div>
+                <span className="label" style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                  Upload a video file {IS_DEMO ? <span className="badge badge-info">Simulated</span> : hostingReady ? <span className="badge badge-ok">Protected storage</span> : <span className="badge badge-muted">Not configured</span>}
+                </span>
             {upload ? (
               <div className="stack" aria-live="polite">
                 <div className="row-between small"><span>Uploading {upload.name}…</span><span>{Math.round(upload.pct)}%</span></div>
@@ -496,19 +548,19 @@ function LessonDialog({ lesson, isNew, coursePublished, completions, activeStude
                 {lastFile && uploadError !== 'Upload cancelled.' && <button type="button" className="btn btn-secondary btn-sm" onClick={() => void startUpload(lastFile)}><Icon name="refresh" size={14} /> Retry</button>}
               </div>
             )}
+              </div>
+            )}
+            {source === 'url' && (
+              <div className="form-row" style={{ alignItems: 'end' }}>
+                <Field label="Video link" type="url" placeholder="https://…" value={videoUrl} error={errors.video}
+                  hint="An MP4 link or an embeddable player URL from another host." onChange={(e) => setVideoUrl(e.target.value)} />
+                <div><button type="button" className="btn btn-secondary" onClick={attachUrl}>Attach link</button></div>
+              </div>
+            )}
           </div>
-
-          <details style={{ marginTop: 14 }}>
-            <summary className="small" style={{ cursor: 'pointer' }}>Or attach a hosted video link</summary>
-            <div className="form-row" style={{ alignItems: 'end', marginTop: 10 }}>
-              <Field label="Video link" type="url" placeholder="https://…" value={videoUrl} error={errors.video}
-                hint="An MP4 link or an embeddable player URL. Links are not access-protected — use them for previews or testing only." onChange={(e) => setVideoUrl(e.target.value)} />
-              <div><button type="button" className="btn btn-secondary" onClick={attachUrl}>Attach link</button></div>
-            </div>
-          </details>
-          <p className="muted small" style={{ marginBottom: 0, marginTop: 12 }}>
-            Protected playback makes casual sharing harder, but no video platform can fully prevent screen recording.
-          </p>
+          <Notice kind="info" title="How protected is the video?">
+            Students watch inside the site’s player, which shows a moving watermark with their email, covers the links that open the video on YouTube or Drive, and blocks right-click and download buttons. In production only students with active access receive the video. <strong>No website can stop screen recording</strong>, and a determined viewer can still find a YouTube or Drive video’s address — for the strongest protection, upload files to private storage instead.
+          </Notice>
         </fieldset>
 
         <fieldset className="fieldset">

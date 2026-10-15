@@ -316,6 +316,59 @@ await test('18. Reset demo data (with confirmation) and dialog keyboard handling
   await p.context().close();
 });
 
+await test('Video: YouTube (unlisted) and Google Drive lessons play in the protected player', async () => {
+  const p = await newPage();
+  await login(p, 'admin@example.com', 'admin12345', '/admin/login');
+  await p.waitForURL('**/admin');
+  await go(p, '/admin/courses/c-release');
+  await p.getByRole('button', { name: 'Edit Jaw and face softening' }).click();
+  const dlg = p.getByRole('dialog', { name: 'Edit lesson' });
+  await dlg.getByLabel('YouTube link').fill('https://example.com/watch?v=aqz-KE-bpKQ');
+  await dlg.getByRole('button', { name: 'Attach video' }).click();
+  check(await dlg.getByText('doesn’t look like a YouTube').count() === 1, 'rejects a non-YouTube link');
+  await dlg.getByLabel('YouTube link').fill('https://youtu.be/aqz-KE-bpKQ');
+  await dlg.getByRole('button', { name: 'Attach video' }).click();
+  await dlg.getByText('YouTube video attached').waitFor();
+  check((await dlg.locator('.video-preview iframe').getAttribute('src')).includes('youtube-nocookie.com/embed/aqz-KE-bpKQ'), 'admin sees a live preview');
+  await dlg.getByRole('button', { name: 'Apply changes' }).click();
+  // Drive on another lesson
+  await p.getByRole('button', { name: 'Edit Screen-break practice' }).click();
+  const d2 = p.getByRole('dialog', { name: 'Edit lesson' });
+  await d2.getByRole('tab', { name: 'Google Drive' }).click();
+  await d2.getByLabel('Google Drive link').fill('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing');
+  await d2.getByRole('button', { name: 'Attach video' }).click();
+  await d2.getByText('Google Drive video attached').waitFor();
+  await d2.getByRole('button', { name: 'Apply changes' }).click();
+  await p.getByRole('button', { name: 'Save course' }).click();
+  await p.getByText('All changes saved.').waitFor();
+  await p.getByRole('button', { name: 'Sign out' }).click();
+
+  await login(p, 'student@example.com', 'practice123');
+  await p.waitForURL('**/dashboard');
+  await go(p, '/learn/face-neck-and-shoulder-release/l-j');
+  const frame = p.locator('.player-protected iframe');
+  await frame.waitFor();
+  check((await frame.getAttribute('src')).startsWith('https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ'), 'student gets the YouTube embed');
+  check(await frame.getAttribute('allowfullscreen') === null, 'embed fullscreen disabled (site fullscreen keeps the watermark)');
+  check((await p.locator('.player-watermark').innerText()).includes('student@example.com'), 'watermark shows the student email');
+  check(await p.locator('.player-shield').count() === 4, 'covers over YouTube title, logo, Watch-on-YouTube and copy-link before playback');
+  const box = await p.locator('.player-protected').boundingBox();
+  const hit = await p.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className, [box.x + box.width - 60, box.y + box.height - 40]);
+  check(String(hit).includes('player-shield'), '"Watch on YouTube" corner is covered');
+  check(await p.locator('.player-protected').evaluate((el) => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); el.dispatchEvent(e); return e.defaultPrevented; }), 'right-click blocked');
+  check(await p.getByRole('button', { name: 'Full screen' }).count() === 1, 'site fullscreen button');
+  check(await p.locator('.lesson-side-head').getByText('3 of 7 complete').count() === 1, 'opening the video lesson did not complete it');
+  await go(p, '/learn/face-neck-and-shoulder-release/l-k');
+  check((await p.locator('.player-protected iframe').getAttribute('src')) === 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/preview', 'student gets the Drive preview embed');
+
+  // A guest in the same browser (signed out) gets no video for the paid lesson
+  await go(p, '/dashboard');
+  await p.getByRole('button', { name: 'Sign out' }).first().click();
+  await go(p, '/learn/face-neck-and-shoulder-release/l-j');
+  check(await p.locator('iframe').count() === 0 && (await text(p)).includes('This lesson is part of'), 'signed-out visitor gets no video');
+  await p.context().close();
+});
+
 await test('19. Layout: no horizontal overflow at phone and desktop widths', async () => {
   const pages = ['/', '/courses', '/courses/daily-face-yoga-practice', '/about', '/faq', '/contact', '/login', '/checkout/daily-face-yoga-practice', '/policies/terms'];
   const student = ['/dashboard', '/account', `/learn/face-neck-and-shoulder-release/l-f`];

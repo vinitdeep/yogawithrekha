@@ -138,6 +138,8 @@ in `payment_events`, no access; payment failure → order `failed`, no access.
 
 ## 8. Video _(required for paid lessons)_
 
+**Simplest option — YouTube (unlisted) or Google Drive:** paste the link in the lesson editor; no setup needed. The video ID is only sent to students with active access (RLS + `lesson-playback`), and the player adds a watermark and hides the outbound links. But anyone who obtains the ID can watch it outside the site, so prefer private storage for paid content.
+
 The integrated option is **Supabase Storage**: a private `lesson-videos` bucket (created by
 `0002_storage.sql`). Admin uploads show real progress; students get a **signed URL valid for 2 hours**
 from `lesson-playback`, issued only after it checks — at that moment — that the lesson is a preview

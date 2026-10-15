@@ -36,6 +36,9 @@ Deno.serve(async (req) => {
     const { data: media } = await db.from('lesson_media').select('video_kind, video_ref').eq('lesson_id', lessonId).maybeSingle();
     if (!media?.video_kind || !media.video_ref) return json(req, 200, { url: null });
     if (media.video_kind === 'url') return json(req, 200, { url: media.video_ref });
+    // Keep in step with src/lib/videoLinks.ts
+    if (media.video_kind === 'youtube') return json(req, 200, { url: `https://www.youtube-nocookie.com/embed/${media.video_ref}?rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&fs=0&disablekb=0` });
+    if (media.video_kind === 'gdrive') return json(req, 200, { url: `https://drive.google.com/file/d/${media.video_ref}/preview` });
 
     const { data: signed, error } = await db.storage.from('lesson-videos').createSignedUrl(media.video_ref, TTL_SECONDS);
     if (error || !signed) throw new Error('could not sign video url');
