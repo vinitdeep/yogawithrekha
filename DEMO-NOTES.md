@@ -26,7 +26,7 @@ See **SETUP-PRODUCTION.md** for exact steps and what has been verified.
 
 | Topic | Assumption |
 |---|---|
-| Courses | Three planned; names, curricula and lesson counts are **samples** (10 / 7 / 5 lessons of 15–20 min). The brief’s “20–25 videos” is not applied to every course. |
+| Courses | Three planned. The demo shows **six sample courses**: three with placeholder lessons (10 / 7 / 5) and three short courses (*Face Yoga Foundations*, *Morning Glow Ritual*, *Neck & Jaw Tension Release*) whose 3 lessons each play **sample YouTube videos from public channels** (embedding allowed). All titles, curricula and videos must be replaced with Rekha’s own. The brief’s “20–25 videos” is not applied to every course. |
 | Prices | **Samples**: ₹3,499 / $59, ₹2,999 / $49, ₹2,499 / $39, labelled “Sample price · not final”. Stored as integers in paise/cents. CAD can be enabled in settings. |
 | Access | 6 calendar months from confirmed enrollment, ending **23:59:59 IST** on the same day-of-month; month-end clamped (31 Aug → 28/29 Feb). Optional “starts on launch date” rule. Changing a course’s duration affects new enrollments only. |
 | Progress | Completed published lessons ÷ published lessons. New lessons lower the percentage; unpublished lessons stop counting but completions are kept. Lessons with student completions can’t be deleted — unpublish them. |

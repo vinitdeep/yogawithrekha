@@ -64,7 +64,7 @@ export function AdminCourses() {
           </tbody>
         </table>
       </div>
-      <p className="muted small" style={{ marginTop: 16 }}>Rekha plans three courses; their final titles and curricula are not confirmed. Lesson counts here are samples, not a commitment to a particular number of videos per course.</p>
+      <p className="muted small" style={{ marginTop: 16 }}>Rekha plans three courses; the courses here are demo samples and their titles and curricula are not confirmed. Sample videos come from public YouTube channels and must be replaced with Rekha’s own. Lesson counts are not a commitment to a particular number of videos per course.</p>
     </>
   );
 }

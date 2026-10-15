@@ -51,7 +51,7 @@ await test('1. Public navigation and course details', async () => {
   check(await p.locator('.demo-pill').isVisible(), 'demo mode control is visible');
   await p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Courses' }).click();
   await p.waitForURL('**/courses');
-  check(await p.locator('.course-card').count() === 3, 'three published courses listed');
+  check(await p.locator('.course-card').count() === 6, 'six published courses listed');
   await p.getByRole('link', { name: 'View course: Daily Face Yoga Practice' }).click();
   await p.waitForURL('**/courses/daily-face-yoga-practice');
   const t = await text(p);
@@ -241,7 +241,7 @@ await test('16–18. Admin edits reach the right screens; drafts stay unpublishe
   const guest = await p.context().newPage();
   await go(guest, '/courses');
   check(!(await text(guest)).includes('Mindful Rituals (edited)'), 'draft course hidden from the catalogue');
-  check(await guest.locator('.course-card').count() === 2, 'two published courses remain');
+  check(await guest.locator('.course-card').count() === 5, 'five published courses remain');
   await go(guest, '/courses/mindful-face-yoga-rituals');
   check((await text(guest)).includes('admin preview'), 'a draft course page is only an admin preview');
   await guest.close();

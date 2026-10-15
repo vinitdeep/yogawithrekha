@@ -92,10 +92,15 @@ export function usePageMotion(scope: RefObject<HTMLElement>, key: string) {
       });
 
       // Staggered groups
+      // Each child reveals when IT enters the viewport (batched for the stagger). A single tween
+      // triggered by the group left later rows of a multi-row grid stuck mid-animation.
       root.querySelectorAll<HTMLElement>('[data-reveal-group]').forEach((group) => {
-        gsap.from(group.children, {
-          opacity: 0, y: 40, duration: 1, ease: 'power3.out', stagger: 0.12,
-          scrollTrigger: { trigger: group, start: 'top 85%', once: true },
+        const items = Array.from(group.children) as HTMLElement[];
+        gsap.set(items, { opacity: 0, y: 40 });
+        ScrollTrigger.batch(items, {
+          start: 'top 92%',
+          once: true,
+          onEnter: (batch) => gsap.to(batch, { opacity: 1, y: 0, duration: 1, ease: 'power3.out', stagger: 0.12, overwrite: true, clearProps: 'transform' }),
         });
       });
 

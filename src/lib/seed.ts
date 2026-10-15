@@ -1,4 +1,4 @@
-import type { AppState, Course, FaqItem, Lesson, Module, Settings, User } from './types';
+import type { AppState, Course, FaqItem, Lesson, LessonVideo, Module, Settings, User } from './types';
 import { computeExpiry, daysAgo } from './dates';
 
 /**
@@ -14,7 +14,7 @@ import { computeExpiry, daysAgo } from './dates';
  *  - Prices are integers in minor units (paise / cents).
  */
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 /** Demo-only, non-cryptographic hash so plain passwords are not sitting in storage.
  *  Production must use a real auth provider; passwords never belong in the browser. */
@@ -34,6 +34,12 @@ const lid = (prefix: string) => `${prefix}-${(++n).toString(36)}`;
 
 function lesson(title: string, durationMin: number, description: string, preview = false): Lesson {
   return { id: lid('l'), title, description, durationMin, preview, published: true };
+}
+
+/** A lesson with a SAMPLE YouTube video from a public channel (placeholder until Rekha records her own). */
+function ytLesson(title: string, durationMin: number, description: string, videoId: string, channel: string, preview = false): Lesson {
+  const video: LessonVideo = { kind: 'youtube', src: videoId, attachedAt: '2026-10-15T00:00:00.000Z' };
+  return { ...lesson(title, durationMin, `${description} (Sample video from ${channel} on YouTube — a placeholder until Rekha’s own lesson is recorded.)`, preview), video };
 }
 
 function mod(title: string, lessons: Lesson[]): Module {
@@ -173,6 +179,115 @@ function buildCourses(): Course[] {
           lesson('A midday pause', 15, 'A short pause to reset during the day.'),
           lesson('Guided self-massage ritual', 19, 'Step-by-step guided self-massage with breath.'),
           lesson('An evening ritual', 18, 'A calming sequence to close the day.'),
+        ]),
+      ],
+    },
+    {
+      id: 'c-foundations',
+      slug: 'face-yoga-foundations',
+      title: 'Face Yoga Foundations',
+      titleProvisional: true,
+      tagline: 'A gentle first step into face yoga, one simple routine at a time.',
+      description:
+        'A short introductory course for complete beginners. You will learn how a face yoga session flows, how to relax your face before you begin, and how to follow a guided routine at a comfortable pace. Each lesson can be repeated as often as you like during your access period.',
+      audience: [
+        'You have never tried face yoga and would like an easy starting point',
+        'You prefer short sessions you can fit into a busy day',
+        'You like being guided step by step',
+      ],
+      topics: [
+        'How a guided face yoga session is structured',
+        'Relaxing the face, jaw and shoulders before you begin',
+        'A complete beginner routine to follow along with',
+        'Choosing a routine you can repeat',
+      ],
+      art: 'sage',
+      image: '/images/rekha/butterfly-pose.webp',
+      imageAlt: 'Placeholder image: a yoga teacher seated in butterfly pose (AI-generated, to be replaced)',
+      prices: { INR: 199900, USD: 2900 },
+      pricesSample: true,
+      status: 'published',
+      accessMonths: 6,
+      curriculumSample: true,
+      updatedAt: now,
+      modules: [
+        mod('Getting started', [
+          ytLesson('Your first face yoga session', 10, 'A calm introduction to the movements used throughout the course, with time to rest between each one.', 'MsUoWIIoTxg', 'Fit Tak', true),
+          ytLesson('Ten simple moves to practise each morning', 10, 'A sequence of ten gentle movements you can follow along with at the start of the day.', '3TSkuu7JKuc', 'Face Yoga Expert'),
+        ]),
+        mod('Your first full routine', [
+          ytLesson('A 15-minute guided routine', 15, 'A longer follow-along session that brings the beginner movements together into one routine.', 'gr5YxVgferc', 'Yoga With Kamya'),
+        ]),
+      ],
+    },
+    {
+      id: 'c-morning',
+      slug: 'morning-glow-ritual',
+      title: 'Morning Glow Ritual',
+      titleProvisional: true,
+      tagline: 'Short morning sessions to start the day feeling calm and awake.',
+      description:
+        'Three short, guided morning practices that pair gentle face yoga with self-massage and breath. Designed to take five to ten minutes, so you can make a little time for yourself before the day begins.',
+      audience: [
+        'You want a short routine to begin your day',
+        'You enjoy gentle self-massage and slow movement',
+        'You would like sessions that take less than ten minutes',
+      ],
+      topics: [
+        'A quick morning face yoga sequence',
+        'Guided self-massage for the face',
+        'A five-minute everyday routine',
+        'Building a morning habit you can keep',
+      ],
+      art: 'rose',
+      image: '/images/rekha/tree-pose.webp',
+      imageAlt: 'Placeholder image: a yoga teacher standing in tree pose (AI-generated, to be replaced)',
+      prices: { INR: 249900, USD: 3900 },
+      pricesSample: true,
+      status: 'published',
+      accessMonths: 6,
+      curriculumSample: true,
+      updatedAt: now,
+      modules: [
+        mod('Morning practices', [
+          ytLesson('An 8-minute morning face yoga practice', 8, 'A short guided sequence to do each morning, moving gently through the whole face.', 'rueg26O5ujQ', 'Face Yoga Studio', true),
+          ytLesson('Daily face massage ritual', 8, 'A slow, guided self-massage to follow along with as part of your morning.', '4SBoTzwSQB8', 'Mady Morrison'),
+          ytLesson('A 5-minute everyday routine', 5, 'A very short routine for mornings when you have only a few minutes.', 'oJIk2PyukjY', 'HisDream'),
+        ]),
+      ],
+    },
+    {
+      id: 'c-neck-jaw',
+      slug: 'neck-and-jaw-tension-release',
+      title: 'Neck & Jaw Tension Release',
+      titleProvisional: true,
+      tagline: 'Slow, mindful movement for the neck, jaw and shoulders.',
+      description:
+        'Gentle guided sessions focused on the neck, jaw and shoulders — areas that often feel tight after long hours at a desk or on screens. Move slowly, stay within a comfortable range, and stop if anything feels uncomfortable. These sessions are general guided practice, not medical treatment.',
+      audience: [
+        'You spend long hours at a desk or looking at screens',
+        'You would like slow, calming sessions for the neck and jaw',
+        'You prefer gentle movement over intense exercise',
+      ],
+      topics: [
+        'A guided neck and jaw session',
+        'Slow release for the neck and shoulders',
+        'Short mindful movement breaks',
+      ],
+      art: 'sand',
+      image: '/images/rekha/cobra-pose.webp',
+      imageAlt: 'Placeholder image: a yoga teacher in cobra pose (AI-generated, to be replaced)',
+      prices: { INR: 229900, USD: 3500 },
+      pricesSample: true,
+      status: 'published',
+      accessMonths: 6,
+      curriculumSample: true,
+      updatedAt: now,
+      modules: [
+        mod('Release sessions', [
+          ytLesson('10 minutes for the neck and jaw', 10, 'A slow, guided session moving through the neck and jaw with plenty of rest.', 'UE12d2rhZzc', 'Yoga with Joelle', true),
+          ytLesson('Neck and jaw wind-down', 10, 'A calm follow-along practice to ease into at the end of a long day.', 'OYr-vNAlElM', 'Yoga Therapy with Ashley'),
+          ytLesson('Four gentle moves for the neck', 8, 'Four simple, mindful movements for the neck and shoulders.', 'DbHzfedqXac', 'Jules Horn – Mindful Movement'),
         ]),
       ],
     },

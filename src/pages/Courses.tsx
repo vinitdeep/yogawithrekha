@@ -25,7 +25,7 @@ export function Courses() {
       <section className="section-tight">
         <div className="wrap">
           <Notice kind="warn" title="Sample course content">
-            Rekha is planning three courses. The titles, descriptions, lesson lists and prices below are placeholders for this demo and have not been confirmed.
+            Rekha is planning three courses; the courses shown here are demo samples of how the catalogue can look. Titles, descriptions, lesson lists, prices and the sample videos (from public YouTube channels) are placeholders and have not been confirmed.
             They are not presented as a beginner-to-advanced sequence; each can be taken on its own.
           </Notice>
           <div className="row-between" style={{ margin: '28px 0 20px' }}>
